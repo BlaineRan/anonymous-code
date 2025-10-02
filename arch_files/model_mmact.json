@@ -1,0 +1,134 @@
+{
+  "model_comparisons": [
+    {
+      "model_description": "DWSepConv",
+      "inference_latency_ms": 0.24,
+      "peak_memory_mb": 3.31,
+      "config": {
+        "input_channels": 9,
+        "num_classes": 35,
+        "stages": [
+          {
+            "blocks": [
+              {
+                "type": "DWSepConv",
+                "kernel_size": 3,
+                "expansion": 1,
+                "has_se": false,
+                "se_ratios": 0,
+                "skip_connection": true,
+                "stride": 1,
+                "activation": "ReLU6"
+              }
+            ],
+            "channels": 9
+          }
+        ]
+      }
+    },
+    {
+      "model_description": "MBConv",
+      "inference_latency_ms": 0.32,
+      "peak_memory_mb": 7.71,
+      "config": {
+        "input_channels": 9,
+        "num_classes": 35,
+        "stages": [
+          {
+            "blocks": [
+              {
+                "type": "MBConv",
+                "kernel_size": 3,
+                "expansion": 2,
+                "has_se": false,
+                "se_ratios": 0,
+                "skip_connection": false,
+                "stride": 1,
+                "activation": "ReLU6"
+              }
+            ],
+            "channels": 9
+          }
+        ]
+      }
+    },
+    {
+      "model_description": "DpConv",
+      "inference_latency_ms": 0.20,
+      "peak_memory_mb": 2.76,
+      "config": {
+        "input_channels": 9,
+        "num_classes": 35,
+        "stages": [
+          {
+            "blocks": [
+              {
+                "type": "DpConv",
+                "kernel_size": 3,
+                "expansion": 1,
+                "has_se": false,
+                "se_ratios": 0,
+                "skip_connection": false,
+                "stride": 1,
+                "activation": "ReLU6"
+              }
+            ],
+            "channels": 9
+          }
+        ]
+      }
+    },
+    {
+      "model_description": "SeSepConv",
+      "inference_latency_ms": 0.37,
+      "peak_memory_mb": 3.32,
+      "config": {
+        "input_channels": 9,
+        "num_classes": 35,
+        "stages": [
+          {
+            "blocks": [
+              {
+                "type": "SeSepConv",
+                "kernel_size": 3,
+                "expansion": 1,
+                "has_se": true,
+                "se_ratios": 0.25,
+                "skip_connection": false,
+                "stride": 1,
+                "activation": "ReLU6"
+              }
+            ],
+            "channels": 9
+          }
+        ]
+      }
+    },
+    {
+      "model_description": "SeDpConv",
+      "inference_latency_ms": 0.11,
+      "peak_memory_mb": 1.66,
+      "config": {
+        "input_channels": 9,
+        "num_classes": 35,
+        "stages": [
+          {
+            "blocks": [
+              {
+                "type": "SeDpConv",
+                "kernel_size": 3,
+                "expansion": 1,
+                "has_se": false,
+                "se_ratios": 0,
+                "skip_connection": false,
+                "stride": 1,
+                "activation": "ReLU6"
+              }
+            ],
+            "channels": 9
+          }
+        ]
+      }
+    }
+  ]
+}

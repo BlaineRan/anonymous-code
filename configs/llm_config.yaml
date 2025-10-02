@@ -1,0 +1,9 @@
+# tinyml/configs/llm_config.yaml
+llm:
+  model_name: "gpt-4o"
+  temperature: 0.3
+  base_url: "https://xiaoai.plus/v1"  # 替换为你的实际URL
+  api_key: "sk-dDIkinRQSn15Q1nMd7rI6jL1G0YIIGMcf278XyxyoNOTwjWD"             # 替换为你的实际API key
+
+memory:
+  max_history: 5  # 最大历史消息数

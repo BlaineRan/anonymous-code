@@ -1,0 +1,86 @@
+
+=== 最终测试结果 ===
+成功测试: 296 个模型
+失败测试: 11 个模型
+GPU使用统计: {1: 81, 2: 73, 3: 69, 0: 73}
+
+📈 相关系数分析:
+Proxy Score 和准确率的相关系数: -0.0200
+Kendall Tau 排序一致性: 0.0106 (p=0.7860)
+Spearman 秩相关系数: 0.0153 (p=0.7929)
+
+🎯 Top-K 命中率分析:
+  Top-1 命中率: 0.000 (0/1)
+  Top-3 命中率: 0.000 (0/3)
+  Top-5 命中率: 0.000 (0/5)
+  Top-10 命中率: 0.000 (0/10)
+
+🏆 前10%模型分析 (n=29):
+按Proxy Score排名前10%的模型:
+  1. Model_321_S1MBConvC16_S2MBConvC16 - Proxy: 0.6927, Acc: 62.33%
+  2. Model_144_S1DpConvC8_S2DWSepConvC8_S2SE0.25 - Proxy: 0.6754, Acc: 53.49%
+  3. Model_307_S1SeSepConvC8_S2DpConvC16 - Proxy: 0.6578, Acc: 58.14%
+  4. Model_201_S1DpConvC24_S2SeSepConvC16 - Proxy: 0.6516, Acc: 62.33%
+  5. Model_146_S1DpConvC8_S2DWSepConvC8_S2SE0.25_S2Skip - Proxy: 0.6488, Acc: 58.60%
+  6. Model_208_S1DpConvC24_S2MBConvC16 - Proxy: 0.6449, Acc: 73.02%
+  7. Model_097_S1MBConvC24_S2MBConvC8_S2SE0.25 - Proxy: 0.6439, Acc: 58.60%
+  8. Model_202_S1DpConvC24_S2DWSepConvC24 - Proxy: 0.6434, Acc: 73.02%
+  9. Model_223_S1DpConvC8_S2DWSepConvC8 - Proxy: 0.6408, Acc: 56.74%
+  10. Model_127_S1SeSepConvC24_S2MBConvC8_S2SE0.25_S2Skip - Proxy: 0.6399, Acc: 68.37%
+  11. Model_161_S1DpConvC8_S2MBConvC8_S2Skip - Proxy: 0.6386, Acc: 61.86%
+  12. Model_017_S1_DpConv_C8 - Proxy: 0.6373, Acc: 49.30%
+  13. Model_026_S1_SeDpConv_C6 - Proxy: 0.6355, Acc: 47.44%
+  14. Model_006_S1_DWSepConv_C16_Skip - Proxy: 0.6349, Acc: 57.21%
+  15. Model_005_S1_DWSepConv_C8_Skip - Proxy: 0.6346, Acc: 44.65%
+  16. Model_000_S1_DWSepConv_C8_SE0.25_Skip - Proxy: 0.6340, Acc: 44.65%
+  17. Model_001_S1_DWSepConv_C8_SE0.25 - Proxy: 0.6340, Acc: 45.12%
+  18. Model_064_S1DWSepConvC16_S2MBConvC8_S1SE0.25_S2SE0.25_S2Skip - Proxy: 0.6328, Acc: 63.72%
+  19. Model_021_S1_SeSepConv_C8 - Proxy: 0.6316, Acc: 52.56%
+  20. Model_003_S1_DWSepConv_C16_SE0.25_Skip - Proxy: 0.6308, Acc: 49.30%
+  21. Model_004_S1_DWSepConv_C16_SE0.25 - Proxy: 0.6307, Acc: 53.02%
+  22. Model_243_S1MBConvC16_S2SeSepConvC16 - Proxy: 0.6292, Acc: 54.88%
+  23. Model_120_S1SeSepConvC16_S2MBConvC16_S2SE0.25_S2Skip - Proxy: 0.6286, Acc: 69.30%
+  24. Model_214_S1DpConvC16_S2DWSepConvC16 - Proxy: 0.6282, Acc: 60.47%
+  25. Model_252_S1DWSepConvC16_S2DWSepConvC16 - Proxy: 0.6274, Acc: 60.00%
+  26. Model_236_S1DWSepConvC8_S2MBConvC8 - Proxy: 0.6267, Acc: 63.72%
+  27. Model_002_S1_DWSepConv_C24_Skip - Proxy: 0.6262, Acc: 48.84%
+  28. Model_295_S1MBConvC16_S2MBConvC16 - Proxy: 0.6261, Acc: 64.19%
+  29. Model_007_S1_DWSepConv_C24 - Proxy: 0.6253, Acc: 56.28%
+
+按真实准确率排名前10%的模型:
+  1. Model_226_S1DWSepConvC24_S2MBConvC24 - Acc: 77.67%, Proxy: 0.6198
+  2. Model_311_S1SeSepConvC24_S2SeSepConvC24 - Acc: 77.21%, Proxy: 0.5411
+  3. Model_168_S1DpConvC24_S2MBConvC24 - Acc: 77.21%, Proxy: 0.5807
+  4. Model_151_S1DpConvC24_S2SeSepConvC24 - Acc: 75.81%, Proxy: 0.5354
+  5. Model_167_S1DpConvC24_S2MBConvC24_S2SE0.25 - Acc: 75.35%, Proxy: 0.5526
+  6. Model_312_S1SeSepConvC24_S2DWSepConvC16 - Acc: 75.35%, Proxy: 0.5785
+  7. Model_246_S1DpConvC24_S2DpConvC24 - Acc: 74.88%, Proxy: 0.5972
+  8. Model_289_S1DWSepConvC24_S2DpConvC16 - Acc: 74.88%, Proxy: 0.5944
+  9. Model_200_S1DWSepConvC16_S2MBConvC16 - Acc: 74.88%, Proxy: 0.5993
+  10. Model_270_S1SeDpConvC6_S2MBConvC16 - Acc: 74.42%, Proxy: 0.5645
+  11. Model_301_S1DpConvC16_S2DWSepConvC24 - Acc: 74.42%, Proxy: 0.6001
+  12. Model_061_S1DWSepConvC24_S2MBConvC16_S2SE0.25 - Acc: 73.95%, Proxy: 0.5275
+  13. Model_282_S1SeDpConvC6_S2MBConvC24 - Acc: 73.95%, Proxy: 0.5617
+  14. Model_063_S1DWSepConvC24_S2MBConvC24_S1SE0.25 - Acc: 73.49%, Proxy: 0.5703
+  15. Model_165_S1DpConvC24_S2MBConvC16_S2SE0.25 - Acc: 73.49%, Proxy: 0.5676
+  16. Model_124_S1SeSepConvC24_S2MBConvC8_S1SE0.25_S2SE0.25 - Acc: 73.49%, Proxy: 0.5816
+  17. Model_261_S1SeSepConvC16_S2SeSepConvC24 - Acc: 73.02%, Proxy: 0.5944
+  18. Model_208_S1DpConvC24_S2MBConvC16 - Acc: 73.02%, Proxy: 0.6449
+  19. Model_125_S1SeSepConvC16_S2MBConvC8_S2Skip - Acc: 73.02%, Proxy: 0.5962
+  20. Model_202_S1DpConvC24_S2DWSepConvC24 - Acc: 73.02%, Proxy: 0.6434
+  21. Model_219_S1DWSepConvC24_S2SeSepConvC8 - Acc: 72.56%, Proxy: 0.6163
+  22. Model_278_S1SeSepConvC24_S2MBConvC24 - Acc: 72.56%, Proxy: 0.5973
+  23. Model_132_S1SeSepConvC24_S2SeSepConvC16_S1SE0.25 - Acc: 72.09%, Proxy: 0.6039
+  24. Model_066_S1DWSepConvC16_S2MBConvC24_S1Skip_S2Skip - Acc: 72.09%, Proxy: 0.5811
+  25. Model_050_S1DWSepConvC24_S2DWSepConvC24_S1SE0.25_S2SE0.25_S1Skip_S2Skip - Acc: 72.09%, Proxy: 0.6163
+  26. Model_163_S1DpConvC16_S2MBConvC24 - Acc: 72.09%, Proxy: 0.6017
+  27. Model_055_S1DWSepConvC16_S2DWSepConvC24_S1SE0.25_S2SE0.25_S1Skip - Acc: 72.09%, Proxy: 0.5906
+  28. Model_160_S1DpConvC24_S2MBConvC24 - Acc: 72.09%, Proxy: 0.5436
+  29. Model_218_S1DWSepConvC24_S2DWSepConvC24 - Acc: 71.63%, Proxy: 0.6066
+
+🔍 各代理指标的排序一致性:
+  - grad_norm: Pearson=0.2736, Kendall Tau=-0.0196
+  - grasp: Pearson=-0.0331, Kendall Tau=0.1295
+  - zen: Pearson=-0.0595, Kendall Tau=-0.0016
+  - synflow: Pearson=0.0017, Kendall Tau=-0.0117
+  - zico: Pearson=0.4528, Kendall Tau=0.0291

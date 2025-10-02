@@ -1,0 +1,39 @@
+# requirements.txt
+# Python 3.9 + CUDA 11.7 专用环境配置
+# 使用方式：
+# 1. 先通过 conda 安装 PyTorch 全家桶
+# 2. 再用 pip 安装其他依赖
+
+### === Conda 核心依赖 === ###
+# 必须先用 conda 安装这些包（PyTorch 与 CUDA 11.7 严格绑定）
+# 运行命令: conda install --file conda_requirements.txt
+--file conda_requirements.txt
+# conda install pytorch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 pytorch-cuda=11.7 -c pytorch -c nvidia
+pytorch==1.13.0
+torchvision==0.14.0
+torchaudio==0.13.0
+torchinfo==1.8.0
+cudatoolkit=11.7
+pyg_lib==0.2.0+pt113cu117
+torch-scatter==2.1.0+pt113cu117 
+torch-sparse==0.6.15+pt113cu117 
+torch-cluster==1.6.0+pt113cu117 
+torch-spline-conv==1.2.1+pt113cu117
+torch-geometric==2.2.0
+python=3.9
+
+### === Pip 依赖 === ###
+# 运行命令: pip install -r requirements.txt
+numpy==1.23.4
+pynvml==12.0.0
+openai==1.94.0
+json5==0.12.0
+pyyaml==6.0.2
+tqdm==4.64.0
+langchain-openai==0.1.25
+langchain-community==0.2.19
+langchain-core==0.2.43
+langchain-openai==0.1.25
+pytz==2025.2
+pynvml
+matplotlib
