@@ -34,6 +34,11 @@ llm:
   temperature:            # Set a suitable temperature value (e.g., 0.7)
   base_url: ""            # Replace with your actual API base URL
   api_key: ""             # Replace with your actual API key
+```
 
+## 3. Run
+After installing all dependencies and updating the configuration, run with:
 
-## 2. Configuration
+```bash
+python /root/tinyml/mcts/mcts_searcher.py --max_peak_memory 15 --dataset_name Mhealth
+```
