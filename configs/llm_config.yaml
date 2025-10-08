@@ -1,9 +1,10 @@
-# tinyml/configs/llm_config.yaml
+# configs/llm_config.yaml
+
 llm:
-  model_name: ""
-  temperature: 
-  base_url: ""  # 替换为你的实际URL
-  api_key: ""             # 替换为你的实际API key
+  model_name: ""        # Specify the model name to be used
+  temperature:           # Set the temperature for text generation (e.g., 0.7)
+  base_url: ""           # Replace with your actual API base URL
+  api_key: ""            # Replace with your actual API key
 
 memory:
-  max_history: 5  # 最大历史消息数
+  max_history: 5         # Maximum number of previous messages to retain
