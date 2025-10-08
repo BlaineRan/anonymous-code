@@ -20,8 +20,6 @@ from .conv_blocks import (
 
 
 from .base_model import TinyMLModel
-from .binary_supernet import BinarySuperNet, BinaryGate, BinarySuperNetBlock, BinarySuperNetStage  # 新增
-
 # 显式导出列表
 __all__ = [
     # 候选模型类
@@ -40,7 +38,6 @@ __all__ = [
     'fuse_model_modules',
     'fuse_QATmodel_modules',
     'TinyMLModel',
-    'BinarySuperNet', 'BinaryGate', 'BinarySuperNetBlock', 'BinarySuperNetStage'  # 新增
 ]
 
 # 版本信息

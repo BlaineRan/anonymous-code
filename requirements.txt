@@ -13,14 +13,14 @@ pytorch==1.13.0
 torchvision==0.14.0
 torchaudio==0.13.0
 torchinfo==1.8.0
-cudatoolkit=11.7
+cudatoolkit==11.7
 pyg_lib==0.2.0+pt113cu117
 torch-scatter==2.1.0+pt113cu117 
 torch-sparse==0.6.15+pt113cu117 
 torch-cluster==1.6.0+pt113cu117 
 torch-spline-conv==1.2.1+pt113cu117
 torch-geometric==2.2.0
-python=3.9
+python==3.9
 
 ### === Pip 依赖 === ###
 # 运行命令: pip install -r requirements.txt
