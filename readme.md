@@ -1,9 +1,3 @@
-pip install -r requirements.txt
-
-configs\llm_config.yaml
-
-python /root/tinyml/mcts/mcts_searcher.py  --max_peak_memory 15 --dataset_name Mhealth
-
 # Setup and Run Guide
 
 This document provides instructions on how to install dependencies, configure the project, and run it successfully.
