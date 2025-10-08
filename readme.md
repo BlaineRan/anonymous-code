@@ -14,9 +14,9 @@ Please execute **both** of the following commands in order:
 ```bash
 conda install --file conda_requirements.txt
 ```
-### Step 2: Install Conda Dependencies
+### Step 2: Install Pip Dependencies
 ```bash
-conda install --file conda_requirements.txt
+pip install -r requirements.txt
 ```
 
 ## 2. Configuration
