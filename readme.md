@@ -34,3 +34,6 @@ llm:
   temperature:            # Set a suitable temperature value (e.g., 0.7)
   base_url: ""            # Replace with your actual API base URL
   api_key: ""             # Replace with your actual API key
+
+
+## 2. Configuration
