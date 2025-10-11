@@ -14,3 +14,9 @@ langchain-community==0.2.19
 langchain-openai==0.1.25
 pytz==2025.2
 matplotlib
+
+https://data.pyg.org/whl/torch-1.13.0%2Bcu117/pyg_lib-0.2.0%2Bpt113cu117-cp39-cp39-linux_x86_64.whl
+https://data.pyg.org/whl/torch-1.13.0%2Bcu117/torch_scatter-2.1.0%2Bpt113cu117-cp39-cp39-linux_x86_64.whl
+https://data.pyg.org/whl/torch-1.13.0%2Bcu117/torch_cluster-1.6.0%2Bpt113cu117-cp39-cp39-linux_x86_64.whl
+https://data.pyg.org/whl/torch-1.13.0%2Bcu117/torch_spline_conv-1.2.1%2Bpt113cu117-cp39-cp39-linux_x86_64.whl
+https://data.pyg.org/whl/torch-1.13.0%2Bcu117/torch_sparse-0.6.15%2Bpt113cu117-cp39-cp39-linux_x86_64.whl
