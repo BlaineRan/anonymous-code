@@ -15,6 +15,13 @@ langchain-openai==0.1.25
 pytz==2025.2
 matplotlib
 
+# PyTorch (CUDA 11.7 build)
+torch==1.13.0+cu117
+torchvision==0.14.0+cu117
+torchaudio==0.13.0+cu117
+--extra-index-url https://download.pytorch.org/whl/cu117
+
+# PyTorch Geometric dependencies
 https://data.pyg.org/whl/torch-1.13.0%2Bcu117/pyg_lib-0.2.0%2Bpt113cu117-cp39-cp39-linux_x86_64.whl
 https://data.pyg.org/whl/torch-1.13.0%2Bcu117/torch_scatter-2.1.0%2Bpt113cu117-cp39-cp39-linux_x86_64.whl
 https://data.pyg.org/whl/torch-1.13.0%2Bcu117/torch_cluster-1.6.0%2Bpt113cu117-cp39-cp39-linux_x86_64.whl

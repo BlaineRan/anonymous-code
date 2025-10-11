@@ -6,15 +6,8 @@ This document provides instructions on how to install dependencies, configure th
 
 ## 1. Install Dependencies
 
-Both **Conda** and **Pip** dependencies must be installed for the project to run properly.  
-Please execute **both** of the following commands in order:
+Install all dependencies using the ffollowing commands:
 
-### Step 1: Install Conda Dependencies
-
-```bash
-conda install --file conda_requirements.txt
-```
-### Step 2: Install Pip Dependencies
 ```bash
 pip install -r requirements.txt
 ```
