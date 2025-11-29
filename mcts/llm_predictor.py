@@ -1037,7 +1037,7 @@ class LLMPredictorExpander:
                 min_standard = True
                 # Additional logic: guard against extremely small models
                 if effective_memory < min_memory_threshold:
-                   session_failures.append({
+                    session_failures.append({
                         'attempt': attempt + 1,
                         'failure_type': 'memory_too_small',
                         'candidate_id': i,
