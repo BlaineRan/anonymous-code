@@ -15,7 +15,7 @@ class TinyMLModel(nn.Module):
         
         # self.quant = QuantStub()
         # self.dequant = DeQuantStub()
-        # 如果启用量化模式，初始化量化模块
+        # Initialize the quantization modules when quantization is enabled
         self.use_quant = self.config.get("quant_mode", None) is not None
         if self.use_quant:
             self.quant = QuantStub()
@@ -119,7 +119,7 @@ class TinyMLModel(nn.Module):
         
     def forward(self, x):
         # x = self.quant(x)
-        # 如果启用量化，执行量化操作
+        # Run quantization when enabled
         if self.use_quant:
             x = self.quant(x)
 
@@ -131,7 +131,7 @@ class TinyMLModel(nn.Module):
         x = self.classifier(x)
         
         # x = self.dequant(x)
-        # 如果启用量化，执行反量化操作
+        # Run dequantization when enabled
         if self.use_quant:
             x = self.dequant(x)
         return x

@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent.parent))  # 添加项目根目录到路径
+sys.path.append(str(Path(__file__).resolve().parent.parent))  # Add project root to the path
 import json
 import os
 from datetime import datetime
@@ -11,24 +11,24 @@ from utils import calculate_memory_usage
 
 def test_model(config, description, dataloader, dataset_info, dataset_name='har70plus'):
     """
-    测试单个模型的性能，包括推理延迟和峰值内存。
-    参数:
-        config: 模型配置
-        description: 模型描述
-        dataloader: 数据加载器
-    返回:
-        包含模型描述、推理延迟、峰值内存和配置的字典
+    Test a single model's performance, including inference latency and peak memory.
+    Args:
+        config: Model configuration
+        description: Model description
+        dataloader: Data loader
+    Returns:
+        Dictionary containing the model description, inference latency, peak memory, and configuration
     """
-    print(f"\n=== 测试模型: {description} ===")
+    print(f"\n=== Testing model: {description} ===")
     candidate = CandidateModel(config=config)
 
-    # 测试推理延迟
+    # Measure inference latency
     latency_ms = candidate.measure_latency(device='cuda', dataset_names=dataset_name)
-    print(f"⏱️ 推理延迟: {latency_ms:.2f} ms")
+    print(f"⏱️ Inference latency: {latency_ms:.2f} ms")
 
-    # 测试峰值内存
+    # Measure peak memory usage
     peak_memory_mb = candidate.measure_peak_memory(device='cuda', dataset_names=dataset_name)
-    print(f"峰值内存使用: {peak_memory_mb:.2f} MB")
+    print(f"Peak memory usage: {peak_memory_mb:.2f} MB")
 
     model = candidate.build_model()
     memory_usage = calculate_memory_usage(
@@ -41,7 +41,7 @@ def test_model(config, description, dataloader, dataset_info, dataset_name='har7
     parameter_memory_mb = memory_usage['parameter_memory_MB']
     total_memory_mb = memory_usage['total_memory_MB']
 
-    # 返回测试结果
+    # Return the test results
     return {
         "model_description": description,
         "inference_latency_ms": round(latency_ms, 2),
@@ -57,7 +57,7 @@ if __name__ == "__main__":
         time_steps = dataset_info['time_steps']
         channels = dataset_info['channels']
         num_classes = dataset_info['num_classes']
-        # 模型配置列表
+        # Model configuration list
         model_configs = [
             {
                 "description": "DWSepConv",
@@ -181,29 +181,29 @@ if __name__ == "__main__":
             }
         ]
 
-        # 加载数据集
+        # Load datasets
         dataloaders = get_multitask_dataloaders('/root/tinyml/data')
-        dataloader = dataloaders[dataset_name]  # 使用 har70plus 数据集
+        dataloader = dataloaders[dataset_name]  # Use the har70plus dataset
 
-        # 设置保存目录
+        # Set up the save directory
         save_dir = "/root/tinyml/arch_files"
         os.makedirs(save_dir, exist_ok=True)
         file_dataset_name = dataset_name.lower()
-        # 设置保存文件路径
+        # Set up the result file path
         result_save_path = os.path.join(save_dir, f"model_{file_dataset_name}.json")
 
-        # 测试所有模型
+        # Test all models
         results = []
         for model in model_configs:
             result = test_model(model["config"], model["description"], dataloader, dataset_info, dataset_name)
             results.append(result)
 
-        # 保存测试结果到 JSON 文件
+        # Save test results to a JSON file
         file_dataset_name = dataset_name.lower()
         output_data = {"dataset_name": file_dataset_name, "model_comparisons": results}
         with open(result_save_path, "w", encoding="utf-8") as f:
             json.dump(output_data, f, indent=2, ensure_ascii=False)
-        print(f"\n✅ 测试结果已保存到: {result_save_path}")
+        print(f"\n✅ Test results saved to: {result_save_path}")
 
     except Exception as e:
-        print(f"❌ 测试失败: {str(e)}")
+        print(f"❌ Test failed: {str(e)}")

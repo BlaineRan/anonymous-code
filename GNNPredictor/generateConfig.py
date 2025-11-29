@@ -3,7 +3,7 @@ import random
 import numpy as np
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent.parent))  # 添加项目根目录到路径
+sys.path.append(str(Path(__file__).resolve().parent.parent))  # Add project root directory to path
 from typing import List, Dict, Any, Tuple
 import os
 import threading
@@ -26,26 +26,26 @@ from collections import defaultdict
 import copy
 
 
-# 设置日志
+# Set up logging
 def setup_logger(gpu_id, log_dir):
-    """ 为每个GPU进程设置单独的日志文件 """
+    """ Set up separate log file for each GPU process """
     os.makedirs(log_dir, exist_ok=True)
     logger = logging.getLogger(f'GPU_{gpu_id}')
     logger.setLevel(logging.INFO)
     
-    # 清除现有的处理器
+    # Clear existing handlers
     if logger.handlers:
         logger.handlers.clear()
     
-    # 文件处理器
+    # File handler
     file_handler = logging.FileHandler(os.path.join(log_dir, f'output_{gpu_id}.log'))
     file_handler.setLevel(logging.INFO)
     
-    # 控制台处理器
+    # Console handler
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     
-    # 格式化
+    # Formatting
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
@@ -56,14 +56,14 @@ def setup_logger(gpu_id, log_dir):
     return logger
 
 def _load_dataset_info( name: str) -> Dict[str, Any]:
-    """加载数据集信息"""
+    """Load dataset information"""
     return get_dataset_info(name)
 # self.dataset_info = self._load_dataset_info(name)
 #  num_classes = self.dataset_info[dataset_name]['num_classes']
 # input_size=(64, self.dataset_info[dataset_name]['channels'], 
                         # self.dataset_info[dataset_name]['time_steps'])
 def set_random_seed(seed=2002):
-    """设置所有随机数生成器的种子以确保可复现性"""
+    """Set seed for all random number generators to ensure reproducibility"""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -73,31 +73,31 @@ def set_random_seed(seed=2002):
     torch.backends.cudnn.benchmark = False
 
 def _prepare_model_for_qat(model, device):
-    """为QAT量化感知训练准备模型"""
+    """Prepare model for QAT (Quantization Aware Training)"""
     try:
-        print("⚙️ 设置QAT配置和融合模块")
+        print("⚙️ Setting up QAT configuration and fusing modules")
         
-        # 设置QAT配置
+        # Set QAT configuration
         model.qconfig = torch.quantization.get_default_qat_qconfig('fbgemm')
         
         fuse_QATmodel_modules(model)
-        # 准备QAT
-        # 确保模型处于训练模式
+        # Prepare QAT
+        # Ensure model is in training mode
         model.train()
         model.to(device)
         torch.quantization.prepare_qat(model, inplace=True)
-        print("✅ QAT准备完成")
+        print("✅ QAT preparation complete")
         
         return model
         
     except Exception as e:
-        print(f"❌ QAT准备失败: {str(e)}")
-        return model  # 返回原始模型
+        print(f"❌ QAT preparation failed: {str(e)}")
+        return model  # Return original model
 
 def _apply_quantization_helper(model, dataloader, quant_mode: str, quantization_option: str = 'int8_per_channel'):
-    """量化辅助方法，复用原有逻辑"""
-    # 这里直接调用你原有的apply_quantization方法
-    # 需要稍微修改以适应新的接口
+    """Quantization helper method, reusing original logic"""
+    # Directly call your original apply_quantization method here
+    # Need slight modification to adapt to new interface
     import copy
     model_copy = copy.deepcopy(model)
     
@@ -111,7 +111,7 @@ def _apply_quantization_helper(model, dataloader, quant_mode: str, quantization_
     elif quant_mode == 'static':
         # int8_default  int8_per_channel int8_reduce_range
         quant_config = get_quantization_option(quantization_option)
-        print(f"📋 选择量化配置: {quant_config['description']}")
+        print(f"📋 Selecting quantization configuration: {quant_config['description']}")
         quantized_model = apply_configurable_static_quantization(
             model_copy,
             dataloader,
@@ -119,54 +119,54 @@ def _apply_quantization_helper(model, dataloader, quant_mode: str, quantization_
             backend=quant_config['backend']
         )
     elif quant_mode == 'qat':
-        # QAT训练后只需要转换，不需要尝试不同选项
-        # QAT训练后转换
-        print("🔧 转换QAT模型为量化模型")
+        # After QAT training, only conversion is needed, no need to try different options
+        # Convert after QAT training
+        print("🔧 Converting QAT model to quantized model")
         model_copy.eval()
-        model_copy.to('cpu')  # 将模型移动到CPU
+        model_copy.to('cpu')  # Move model to CPU
         quantized_model = torch.quantization.convert(model_copy, inplace=False)
-        print("✅ QAT转换完成")
+        print("✅ QAT conversion complete")
     else:
         return model
     
     return quantized_model
 
 def train_qat_model(model, dataloader, device, save_path, logger):
-    """训练QAT模型"""
+    """Train QAT model"""
     try:
-        logger.info("🏋️ 开始 QAT 量化感知训练")
+        logger.info("🏋️ Starting QAT Quantization Aware Training")
         
-        # 准备 QAT 模型
+        # Prepare QAT model
         qat_model = _prepare_model_for_qat(copy.deepcopy(model), device)
         
-        # 创建QAT训练器
+        # Create QAT trainer
         qat_trainer = SingleTaskTrainer(qat_model, dataloader, device=device, logger=logger)
         
-        # 训练QAT模型（可以使用较少的 epoch ，因为基础模型已经训练过）
+        # Train QAT model (can use fewer epochs since base model is already trained)
         best_acc, best_val_metrics, history, best_state = qat_trainer.train(
             epochs=50, save_path=save_path
         )
         
-        logger.info(f"✅ QAT 训练完成 - Acc: {best_acc:.2f}%")
+        logger.info(f"✅ QAT training complete - Acc: {best_acc:.2f}%")
         return qat_model, best_acc, best_state
         
     except Exception as e:
-        logger.error(f"❌ QAT训练失败: {str(e)}")
+        logger.error(f"❌ QAT training failed: {str(e)}")
         import traceback
         traceback.print_exc()
         return None, 0.0, None
 
 
 def test_model_worker(config, description, dataset_name, base_save_dir, gpu_id, result_queue, logger):
-    """工作进程函数，在指定的GPU上测试模型"""
+    """Worker process function, test model on specified GPU"""
     try:
         worker_seed = 2002 + gpu_id
         set_random_seed(worker_seed)
         torch.cuda.set_device(gpu_id)
         device = torch.device(f'cuda:{gpu_id}')
         
-        # print(f"🚀 进程 {os.getpid()} 在 GPU {gpu_id} 上测试: {description}")
-        logger.info(f"🚀 进程 {os.getpid()} 在 GPU {gpu_id} 上测试: {description}")
+        # print(f"🚀 Process {os.getpid()} testing on GPU {gpu_id}: {description}")
+        logger.info(f"🚀 Process {os.getpid()} testing on GPU {gpu_id}: {description}")
         
         dataset_info = _load_dataset_info(dataset_name)
         dataloaders = get_multitask_dataloaders('/root/tinyml/data')
@@ -175,18 +175,18 @@ def test_model_worker(config, description, dataset_name, base_save_dir, gpu_id, 
         candidate = CandidateModel(config=config)
         model = candidate.build_model().to(device)
 
-        # print(f"📊 GPU {gpu_id} 代理分数计算完成: {description}")
-        logger.info(f"📊 GPU {gpu_id} 模型描述: {description}")
+        # print(f"📊 GPU {gpu_id} Model description: {description}")
+        logger.info(f"📊 GPU {gpu_id} Model description: {description}")
         trainer = SingleTaskTrainer(model, dataloader, device=device, logger=logger)
 
-        # 创建模型保存目录
+        # Create model save directory
         model_save_dir = os.path.join(base_save_dir, description.replace(" ", "_"))
         os.makedirs(model_save_dir, exist_ok=True)
-        # 原始路径
+        # Original path
         original_model_save_path  = os.path.join(model_save_dir, "best_model.pth")
 
-        # 1. 训练原始模型
-        logger.info(f"🏋️ GPU {gpu_id} 开始训练原始模型: {description} (100 epochs)")
+        # 1. Train original model
+        logger.info(f"🏋️ GPU {gpu_id} Starting training original model: {description} (100 epochs)")
         best_acc, best_val_metrics, history, best_state = trainer.train(
             epochs=100, save_path=original_model_save_path
         )
@@ -200,7 +200,7 @@ def test_model_worker(config, description, dataset_name, base_save_dir, gpu_id, 
             "status": "success",
         }
         
-        # 保存原始模型配置
+        # Save original model configuration
         config_save_path = os.path.join(model_save_dir, "model.json")
         model_data = {
             "config": config,
@@ -227,18 +227,18 @@ def test_model_worker(config, description, dataset_name, base_save_dir, gpu_id, 
             json.dump(converted_data, f, indent=2, ensure_ascii=False)
         
         result_queue.put(result)
-        # print(f"✅ GPU {gpu_id} 训练完成: {description} - Acc: {best_acc:.2f}%")
-        logger.info(f"✅ GPU {gpu_id} 原始模型训练完成: {description} - Acc: {best_acc:.2f}%")
+        # print(f"✅ GPU {gpu_id} Original model training complete: {description} - Acc: {best_acc:.2f}%")
+        logger.info(f"✅ GPU {gpu_id} Original model training complete: {description} - Acc: {best_acc:.2f}%")
 
-        # 静态量化部分
+        # Static quantization part
         quant_mode = "static"
         quantization_options = [
-            ('int8_default', '默认INT8量化'),
-            ('int8_per_channel', '逐通道INT8量化'), 
-            ('int8_reduce_range', '减少范围INT8量化'),
-            ('int8_asymmetric', 'INT8非对称量化'),
-            ('int8_histogram', 'INT8直方图校准'),
-            ('int8_moving_avg', 'INT8移动平均校准')
+            ('int8_default', 'Default INT8 Quantization'),
+            ('int8_per_channel', 'Per-channel INT8 Quantization'), 
+            ('int8_reduce_range', 'Reduced Range INT8 Quantization'),
+            ('int8_asymmetric', 'INT8 Asymmetric Quantization'),
+            ('int8_histogram', 'INT8 Histogram Calibration'),
+            ('int8_moving_avg', 'INT8 Moving Average Calibration')
         ]
         
         best_quant_accuracy = 0.0
@@ -247,45 +247,44 @@ def test_model_worker(config, description, dataset_name, base_save_dir, gpu_id, 
 
         for option_name, option_desc in quantization_options:
             try:
-                # print(f"🔬 尝试 {option_desc} ({option_name})")
-                logger.info(f"🔬 尝试 {option_desc} ({option_name})")
+                # print(f"🔬 Trying {option_desc} ({option_name})")
+                logger.info(f"🔬 Trying {option_desc} ({option_name})")
                 quantized_model = _apply_quantization_helper(
                     model, dataloader, quant_mode, option_name
                 )
                 if quantized_model:
-                    # 创建任务头并加载权重
+                    # Create task head and load weights
                     task_head = torch.nn.Linear(model.output_dim, 
                         len(dataloader['test'].dataset.classes)).to('cpu')
                     if best_state and 'head' in best_state:
                         task_head.load_state_dict(best_state['head'])
                     
-                    # 评估量化模型准确率
+                    # Evaluate quantized model accuracy
                     quant_accuracy = evaluate_quantized_model(
-                        quantized_model, dataloader, task_head, f" MCTS 量化模型({option_name})"
+                        quantized_model, dataloader, task_head, f" MCTS Quantized Model ({option_name})"
                     )
                     
-                    # print(f"📊 {option_desc} 结果: "
-                    #     f"准确率={quant_accuracy:.1f}%, ")
-                    logger.info(f"📊 {option_desc} 结果: 准确率={quant_accuracy:.1f}%")
+                    # print(f"📊 {option_desc} Result: Accuracy={quant_accuracy:.1f}%")
+                    logger.info(f"📊 {option_desc} Result: Accuracy={quant_accuracy:.1f}%")
 
                     
-                    # 记录最佳结果
+                    # Record best result
                     if quant_accuracy > best_quant_accuracy:
                         best_quant_accuracy = quant_accuracy
                         best_quantized_model = quantized_model
                         best_option_name = option_name
                         
             except Exception as e:
-                # print(f"❌ {option_desc} 失败: {str(e)}")
-                logger.error(f"❌ {option_desc} 失败: {str(e)}")
+                # print(f"❌ {option_desc} Failed: {str(e)}")
+                logger.error(f"❌ {option_desc} Failed: {str(e)}")
                 continue
 
-        # 保存最佳量化模型
+        # Save best quantized model
         if best_quantized_model:
             quant_model_save_path = os.path.join(model_save_dir, "quant_best_model.pth")
             quant_config_save_path = os.path.join(model_save_dir, "quant_model.json")
             
-            # 保存量化模型权重
+            # Save quantized model weights
             torch.save(best_quantized_model.state_dict(), quant_model_save_path)
             
             quant_result = {
@@ -297,7 +296,7 @@ def test_model_worker(config, description, dataset_name, base_save_dir, gpu_id, 
                 "status": "success"
             }
 
-            # 保存量化模型配置
+            # Save quantized model configuration
             quant_model_data = {
                 "config": config,
                 "quantized_accuracy": best_quant_accuracy,
@@ -306,44 +305,44 @@ def test_model_worker(config, description, dataset_name, base_save_dir, gpu_id, 
             with open(quant_config_save_path, "w", encoding="utf-8") as f:
                 json.dump(convert_numpy_types(quant_model_data), f, indent=2, ensure_ascii=False)
             
-            # print(f"🏆 选择最佳量化算法: {best_option_name}")
-            # print(f"✅ 最终量化结果: 准确率={best_quant_accuracy:.1f}%")
-            logger.info(f"🏆 选择最佳量化算法: {best_option_name}")
-            logger.info(f"✅ 最终量化结果: 准确率={best_quant_accuracy:.1f}%")
+            # print(f"🏆 Selected best quantization algorithm: {best_option_name}")
+            # print(f"✅ Final quantization result: Accuracy={best_quant_accuracy:.1f}%")
+            logger.info(f"🏆 Selected best quantization algorithm: {best_option_name}")
+            logger.info(f"✅ Final quantization result: Accuracy={best_quant_accuracy:.1f}%")
         
         
         result_queue.put(quant_result)
-        # print(f"✅ 量化模型 GPU {gpu_id} 完成: {description} - Acc: {best_acc:.2f}%")
-        logger.info(f"✅ 静态量化模型 GPU {gpu_id} 完成: {description} - Acc: {best_acc:.2f}%")
+        # print(f"✅ Static quantized model GPU {gpu_id} complete: {description} - Acc: {best_acc:.2f}%")
+        logger.info(f"✅ Static quantized model GPU {gpu_id} complete: {description} - Acc: {best_acc:.2f}%")
         
-        # 3.  QAT 量化感知训练
-        logger.info(f"🔧 GPU {gpu_id} 开始QAT量化感知训练: {description}")
+        # 3. QAT Quantization Aware Training
+        logger.info(f"🔧 GPU {gpu_id} Starting QAT Quantization Aware Training: {description}")
         qat_model_save_path = os.path.join(model_save_dir, "qat_best_model.pth")
         qat_config_save_path = os.path.join(model_save_dir, "qat_model.json")
 
-        # 训练 QAT 模型
+        # Train QAT model
         qat_model, qat_accuracy, qat_best_state = train_qat_model(
             model, dataloader, device, qat_model_save_path, logger
         )
 
         if qat_model:
-            # 转换QAT模型为量化模型
-            logger.info("🔧 转换 QAT 模型为量化模型")
+            # Convert QAT model to quantized model
+            logger.info("🔧 Converting QAT model to quantized model")
             qat_model.eval()
             qat_model.to('cpu')
             quantized_qat_model = torch.quantization.convert(qat_model, inplace=False)
             
-            # 评估 QAT 量化模型
+            # Evaluate QAT quantized model
             task_head = torch.nn.Linear(model.output_dim, 
                 len(dataloader['test'].dataset.classes)).to('cpu')
             if qat_best_state and 'head' in qat_best_state:
                 task_head.load_state_dict(qat_best_state['head'])
             
             qat_quant_accuracy = evaluate_quantized_model(
-                quantized_qat_model, dataloader, task_head, f"QAT量化模型"
+                quantized_qat_model, dataloader, task_head, f"QAT Quantized Model"
             )
             
-            # 保存 QAT 量化模型
+            # Save QAT quantized model
             torch.save(quantized_qat_model.state_dict(), qat_model_save_path)
             
             qat_result = {
@@ -355,7 +354,7 @@ def test_model_worker(config, description, dataset_name, base_save_dir, gpu_id, 
                 "status": "success",
             }
             
-            # 保存 QAT 模型配置
+            # Save QAT model configuration
             qat_model_data = {
                 "config": config,
                 "qat_accuracy": qat_accuracy,
@@ -366,11 +365,11 @@ def test_model_worker(config, description, dataset_name, base_save_dir, gpu_id, 
                 json.dump(convert_numpy_types(qat_model_data), f, indent=2, ensure_ascii=False)
             
             result_queue.put(qat_result)
-            logger.info(f"✅ QAT量化完成: {description} - QAT Acc: {qat_accuracy:.2f}%, Quantized Acc: {qat_quant_accuracy:.2f}%")
+            logger.info(f"✅ QAT quantization complete: {description} - QAT Acc: {qat_accuracy:.2f}%, Quantized Acc: {qat_quant_accuracy:.2f}%")
         else:
-            logger.error(f"❌ QAT训练失败: {description}")
+            logger.error(f"❌ QAT training failed: {description}")
         
-        logger.info(f"✅ 所有量化完成 GPU {gpu_id}: {description}")
+        logger.info(f"✅ All quantizations complete GPU {gpu_id}: {description}")
 
     except Exception as e:
         error_result = {
@@ -381,34 +380,34 @@ def test_model_worker(config, description, dataset_name, base_save_dir, gpu_id, 
             "gpu_id": gpu_id
         }
         result_queue.put(error_result)
-        # print(f"❌ GPU {gpu_id} 失败: {description} - {e}")
-        logger.error(f"❌ GPU {gpu_id} 失败: {description} - {e}")
+        # print(f"❌ GPU {gpu_id} Failed: {description} - {e}")
+        logger.error(f"❌ GPU {gpu_id} Failed: {description} - {e}")
         import traceback
         traceback.print_exc()
 
 def gpu_worker(gpu_id, task_queue, result_queue, dataset_name, base_save_dir, log_dir):
-    """GPU工作进程，从任务队列获取任务并执行"""
+    """GPU worker process, fetch task from task queue and execute"""
     logger = setup_logger(gpu_id, log_dir)
-    logger.info(f"🔄 GPU工作进程 {os.getpid()} 启动，使用 GPU {gpu_id}")
-    # print(f"🔄 GPU工作进程 {os.getpid()} 启动，使用 GPU {gpu_id}")
+    logger.info(f"🔄 GPU worker process {os.getpid()} started, using GPU {gpu_id}")
+    # print(f"🔄 GPU worker process {os.getpid()} started, using GPU {gpu_id}")
     
     while True:
         try:
             task = task_queue.get(timeout=300)
             if task is None:
-                # print(f"🛑 GPU {gpu_id} 收到结束信号")
-                logger.info(f"🛑 GPU {gpu_id} 收到结束信号")
+                # print(f"🛑 GPU {gpu_id} received termination signal")
+                logger.info(f"🛑 GPU {gpu_id} received termination signal")
                 break
                 
             config, description = task
             test_model_worker(config, description, dataset_name, base_save_dir, gpu_id, result_queue, logger)
             
         except queue.Empty:
-            logger.info(f"⏰ GPU {gpu_id} 等待任务超时，退出")
+            logger.info(f"⏰ GPU {gpu_id} wait for task timed out, exiting")
             break
         except Exception as e:
-            # print(f"❌ GPU {gpu_id} 工作进程错误: {e}")
-            logger.error(f"❌ GPU {gpu_id} 工作进程错误: {e}")
+            # print(f"❌ GPU {gpu_id} worker process error: {e}")
+            logger.error(f"❌ GPU {gpu_id} worker process error: {e}")
             break
 
 
@@ -419,19 +418,19 @@ class ArchitectureGenerator:
         self.dataset_info = _load_dataset_info(dataset_name)
         self.seed = seed
         set_random_seed(seed)
-        self.lock = threading.Lock()  # 线程锁
+        self.lock = threading.Lock()  # Thread lock
         
     def generate_random_config(self) -> Dict[str, Any]:
-        """生成一个完全随机的架构配置"""
-        # 从数据集信息获取输入通道数和类别数
+        """Generate a completely random architecture configuration"""
+        # Get input channels and number of classes from dataset info
         input_channels = self.dataset_info['channels']
         num_classes = self.dataset_info['num_classes']
 
-        # 随机选择 stage 数量
+        # Randomly select number of stages
         num_stages = random.choice(self.search_space['stages'])
         
         stages = []
-        previous_channels = input_channels    # 输入通道数
+        previous_channels = input_channels    # Input channels
         
         for stage_idx in range(num_stages):
             stage_config = self._generate_stage_config(stage_idx, previous_channels)
@@ -441,7 +440,7 @@ class ArchitectureGenerator:
         config = {
             "input_channels": input_channels,
             "num_classes": num_classes,
-            "quant_mode": "none",  # 固定为 none
+            "quant_mode": "none",  # Fixed to none
             "stages": stages,
             "constraints": self.search_space.get('constraints', {})
         }
@@ -449,8 +448,8 @@ class ArchitectureGenerator:
         return config
     
     def _generate_stage_config(self, stage_idx: int, previous_channels: int) -> Dict[str, Any]:
-        """生成单个 stage 的配置"""
-        # 随机选择 block 数量
+        """Generate configuration for a single stage"""
+        # Randomly select number of blocks
         num_blocks = random.choice(self.search_space['blocks_per_stage'])
         
         blocks = []
@@ -461,11 +460,11 @@ class ArchitectureGenerator:
             if block_config['type'] == "SeDpConv" or block_config['type'] == "DpConv":
                 has_se_dp_conv = True
 
-        # 如果有SeDpConv或DpConv，则通道数必须等于输入通道数
+        # If SeDpConv or DpConv is present, channels must equal input channels
         if has_se_dp_conv:
             channels = previous_channels
         else:
-            # 随机选择通道数
+            # Randomly select number of channels
             channels = random.choice(self.search_space['channels'])
         
         return {
@@ -474,10 +473,10 @@ class ArchitectureGenerator:
         }
     
     def _generate_block_config(self, stage_idx: int, block_idx: int, previous_channels: int) -> Dict[str, Any]:
-        """生成单个block的配置"""
+        """Generate configuration for a single block"""
         conv_type = random.choice(self.search_space['conv_types'])
         
-        # 根据卷积类型设置默认参数
+        # Set default parameters based on convolution type
         if conv_type == "MBConv":
             expansion = random.choice([x for x in self.search_space['expansions'] if x > 1])
             has_se = random.choice(self.search_space['has_se'])
@@ -498,14 +497,14 @@ class ArchitectureGenerator:
             expansion = 1
             has_se = random.choice(self.search_space['has_se'])
             skip_connection = False
-            # SeDpConv在第一层的通道必须与输入通道数相同
+            # SeDpConv channels in the first layer must match input channels
             if stage_idx == 0 and block_idx == 0:
                 previous_channels = self.dataset_info['channels']
         
-        # 设置SE比例
+        # Set SE ratio
         se_ratio = random.choice(self.search_space['se_ratios']) if has_se else 0
         
-        # 随机选择其他参数
+        # Randomly select other parameters
         kernel_size = random.choice(self.search_space['kernel_sizes'])
         stride = random.choice(self.search_space['strides'])
         activation = random.choice(self.search_space['activations'])
@@ -526,19 +525,19 @@ class ArchitectureGenerator:
     def _generate_configs_worker(self, stage_count: int, target_count: int, 
                                seen_configs: set, result_queue: queue.Queue,
                                worker_id: int):
-        """工作线程函数： 生成固定 stage 数量的配置"""
+        """Worker thread function: Generate configuration with fixed number of stages"""
         worker_configs = []
         worker_seen = set()
         attempts = 0
-        max_attempts = target_count * 5  # 防止无限循环
+        max_attempts = target_count * 5  # Prevent infinite loop
         
-        print(f"🧵 工作线程 {worker_id} 开始生成 {target_count} 个 {stage_count} stage 配置")
+        print(f"🧵 Worker thread {worker_id} started generating {target_count} configurations with {stage_count} stages")
         
         while len(worker_configs) < target_count and attempts < max_attempts:
             attempts += 1
             
             config = self.generate_random_config()
-            # 确保 stage 数量正确
+            # Ensure correct number of stages
             if len(config['stages']) != stage_count:
                 continue
             
@@ -551,36 +550,36 @@ class ArchitectureGenerator:
             description = self._generate_description(config)
             worker_configs.append((config, description))
 
-            # 每生成100个配置显示一次进度
+            # Show progress every 100 configurations generated
             if len(worker_configs) % 100 == 0:
-                print(f"  🧵 线程 {worker_id}: 已生成 {len(worker_configs)}/{target_count} 个 {stage_count} stage 配置")
+                print(f"  🧵 Thread {worker_id}: Generated {len(worker_configs)}/{target_count} configurations with {stage_count} stages")
         
-        # 将结果放入队列
+        # Put results into queue
         with self.lock:
             seen_configs.update(worker_seen)
         
         result_queue.put((worker_id, stage_count, worker_configs))
-        print(f"✅ 工作线程 {worker_id} 完成: 生成 {len(worker_configs)} 个 {stage_count} stage 配置")
+        print(f"✅ Worker thread {worker_id} complete: Generated {len(worker_configs)} configurations with {stage_count} stages")
 
     def generate_stratified_configs(self, num_configs: int, num_threads: int = 4) -> List[Tuple[Dict[str, Any], str]]:
-        """使用分层抽样策略生成配置，确保多样性"""
+        """Generate configurations using stratified sampling strategy to ensure diversity"""
         configurations = []
         seen_configs = set()
         
-        # 按stage数量分层，使用指数分布分配
+        # Stratify by number of stages, distribute using exponential distribution
         stage_counts = self.search_space['stages']
         stage_targets = self._calculate_exponential_targets(stage_counts, num_configs)
 
-        print("📊 Stage 数量分配策略:")
+        print("📊 Stage Quantity Distribution Strategy:")
         for stage_count, target in stage_targets.items():
-            print(f"  Stage {stage_count}: {target} 个配置")
+            print(f"  Stage {stage_count}: {target} configurations")
         
-        # 为每个 stage 数量创建任务队列
+        # Create task queue for each stage quantity
         result_queue = queue.Queue()
         threads = []
 
         for stage_count, total_target in stage_targets.items():
-            # 将目标数量 分配 给各个线程
+            # Distribute target quantity to each thread
             targets_per_thread = self._distribute_targets(total_target, num_threads)
             
             for thread_id, thread_target in enumerate(targets_per_thread):
@@ -592,22 +591,22 @@ class ArchitectureGenerator:
                     )
                     threads.append(thread)
         
-        # 启动所有线程
-        print(f"🚀 启动 {len(threads)} 个工作线程...")
+        # Start all threads
+        print(f"🚀 Starting {len(threads)} worker threads...")
         for thread in threads:
             thread.start()
         
-        # 等待所有线程完成
+        # Wait for all threads to complete
         for thread in threads:
             thread.join()
         
-        # 收集结果
+        # Collect results
         while not result_queue.empty():
             worker_id, stage_count, worker_configs = result_queue.get()
             configurations.extend(worker_configs)
-            print(f"📦 从线程 {worker_id} 收集到 {len(worker_configs)} 个 Stage {stage_count} 配置")
+            print(f"📦 Collected {len(worker_configs)} Stage {stage_count} configurations from thread {worker_id}")
         
-        # 检查重复配置
+        # Check for duplicate configurations
         unique_configs = set()
         duplicate_count = 0
         
@@ -618,12 +617,12 @@ class ArchitectureGenerator:
             else:
                 unique_configs.add(config_hash)
         
-        print(f"🔍 配置去重检查: 总配置数 {len(configurations)}, 唯一配置数 {len(unique_configs)}, 重复配置数 {duplicate_count}")
+        print(f"🔍 Configuration deduplication check: Total {len(configurations)}, Unique {len(unique_configs)}, Duplicates {duplicate_count}")
 
         return configurations
     
     def _distribute_targets(self, total_target: int, num_threads: int) -> List[int]:
-        """将目标数量分配给各个线程"""
+        """Distribute target quantity to each thread"""
         base_target = total_target // num_threads
         remainder = total_target % num_threads
         
@@ -634,32 +633,32 @@ class ArchitectureGenerator:
         return targets
     
     def _calculate_exponential_targets(self, categories: List[Any], total: int) -> Dict[Any, int]:
-        """计算指数分布的分层抽样目标数量"""
-        # 计算每个 stage 数量的组合复杂度权重
-        # stage 数量越多，可能的组合越多，应该分配更多的配置
+        """Calculate stratified sampling target quantities using exponential distribution"""
+        # Calculate combination complexity weight for each stage quantity
+        # The more stages, the more possible combinations, so more configurations should be allocated
         weights = {}
         max_stage = max(categories)
         
-        # 使用指数权重： stage 数量为 n 的 权重为 base^(n-1)
-        base = 4  # 每个 stage 增加，组合数量大约增加4倍
+        # Use exponential weights: weight for n stages is base^(n-1)
+        base = 4  # Each additional stage increases combinations by about 4x
         
         for stage_count in categories:
-            # stage数量为n的权重为 base ^ (n - 1)
+            # Weight for n stages is base ^ (n - 1)
             weights[stage_count] = base ** (stage_count - 1)
         
-        # 归一化权重
+        # Normalize weights
         total_weight = sum(weights.values())
         
         targets = {}
         remaining = total
         
-        # 按权重分配，但确保每个 stage 至少有一个配置
+        # Distribute by weight, but ensure at least one configuration per stage
         for stage_count in sorted(categories):
             if stage_count == max_stage:
-                # 最后一个stage分配剩余的所有
+                # Allocate remaining to the last stage
                 targets[stage_count] = remaining
             else:
-                # 按权重比例分配
+                # Distribute proportionally by weight
                 proportion = weights[stage_count] / total_weight
                 target_count = max(1, int(total * proportion))
                 targets[stage_count] = target_count
@@ -669,18 +668,18 @@ class ArchitectureGenerator:
     
     def _generate_configs_with_fixed_stages(self, num_stages: int, target_count: int, 
                                           seen_configs: set) -> List[Tuple[Dict[str, Any], str]]:
-        """生成固定 stage 数量的配置"""
+        """Generate configurations with fixed number of stages"""
         configs = []
         attempts = 0
-        max_attempts = target_count * 10  # 防止无限循环
+        max_attempts = target_count * 10  # Prevent infinite loop
 
-        print(f"🔄 开始生成 {target_count} 个 {num_stages} stage 的配置...")
+        print(f"🔄 Starting generation of {target_count} configurations with {num_stages} stages...")
         
         while len(configs) < target_count and attempts < max_attempts:
             attempts += 1
             
             config = self.generate_random_config()
-            # 确保stage数量正确
+            # Ensure correct number of stages
             if len(config['stages']) != num_stages:
                 continue
             
@@ -693,17 +692,17 @@ class ArchitectureGenerator:
             description = self._generate_description(config)
             configs.append((config, description))
 
-            # 显示进度
+            # Show progress
             if len(configs) % 100 == 0 or len(configs) == target_count:
-                print(f"  ✅ 已生成 {len(configs)}/{target_count} 个 {num_stages} stage 配置")
+                print(f"  ✅ Generated {len(configs)}/{target_count} configurations with {num_stages} stages")
         
         if len(configs) < target_count:
-            print(f"⚠️  警告: 只生成了 {len(configs)}/{target_count} 个 {num_stages} stage 配置")
+            print(f"⚠️  Warning: Only generated {len(configs)}/{target_count} configurations with {num_stages} stages")
         
         return configs
     
     def _get_config_hash(self, config: Dict[str, Any]) -> str:
-        """生成配置的唯一哈希值， 用于去重"""
+        """Generate unique hash for configuration, used for deduplication"""
         hash_parts = []
         
         for i, stage in enumerate(config['stages']):
@@ -720,7 +719,7 @@ class ArchitectureGenerator:
         return "|".join(hash_parts)
     
     def _generate_description(self, config: Dict[str, Any]) -> str:
-        """生成配置的描述字符串"""
+        """Generate description string for configuration"""
         desc_parts = []
         
         for i, stage in enumerate(config['stages']):
@@ -737,17 +736,17 @@ class ArchitectureGenerator:
                     block_desc += "Skip"
                 if block['stride'] > 1:
                     block_desc += f"S{block['stride']}"
-                if j > 0:  # 为所有block添加信息，不只是第一个
+                if j > 0:  # Add info for all blocks, not just the first one
                     desc_parts[-1] += f"_{block_desc}"
 
-        # 添加随机后缀以确保唯一性
+        # Add random suffix to ensure uniqueness
         import random
         random_suffix = random.randint(1000, 9999)
         return "_".join(desc_parts) + f"_{random_suffix}"
 
 
     def create_gpu_processes(self, num_gpus, task_queue, result_queue, dataset_name, base_save_dir, log_dir):
-        """创建GPU工作进程"""
+        """Create GPU worker processes"""
         processes = []
         for gpu_id in range(num_gpus):
             p = Process(
@@ -761,15 +760,15 @@ class ArchitectureGenerator:
         return processes
 
 def check_generated_models(base_save_dir, expected_count):
-    """检查生成的模型数量和完整性"""
-    print(f"🔍 检查生成的模型在目录: {base_save_dir}")
+    """Check quantity and integrity of generated models"""
+    print(f"🔍 Checking generated models in directory: {base_save_dir}")
     
-    # 获取所有子文件夹
+    # Get all subfolders
     subdirectories = [d for d in os.listdir(base_save_dir) if os.path.isdir(os.path.join(base_save_dir, d))]
     
-    print(f"找到 {len(subdirectories)} 个子文件夹 (预期: {expected_count})")
+    print(f"Found {len(subdirectories)} subfolders (Expected: {expected_count})")
     
-    # 检查每个子文件夹的文件完整性
+    # Check file integrity of each subfolder
     incomplete_folders = []
     complete_folders = []
     
@@ -778,7 +777,7 @@ def check_generated_models(base_save_dir, expected_count):
         files = os.listdir(folder_path)
         
         # expected_files = {"best_model.pth", "model.json", "quant_best_model.pth", "quant_model.json"}
-        # 更新期望的文件列表，包含 QAT 相关文件
+        # Update expected file list, including QAT related files
         expected_files = {
             "best_model.pth", "model.json", 
             "quant_best_model.pth", "quant_model.json",
@@ -798,21 +797,21 @@ def check_generated_models(base_save_dir, expected_count):
         else:
             complete_folders.append(folder)
     
-    # 输出结果
-    print(f"✅ 完整文件夹: {len(complete_folders)} 个")
-    print(f"❌ 不完整文件夹: {len(incomplete_folders)} 个")
+    # Output results
+    print(f"✅ Complete folders: {len(complete_folders)}")
+    print(f"❌ Incomplete folders: {len(incomplete_folders)}")
     
     if incomplete_folders:
-        print("\n不完整文件夹详情:")
-        for folder_info in incomplete_folders[:10]:  # 只显示前10个
-            print(f"  - {folder_info['folder']}: 缺失 {folder_info['missing_files']}")
+        print("\nIncomplete folder details:")
+        for folder_info in incomplete_folders[:10]:  # Only show first 10
+            print(f"  - {folder_info['folder']}: Missing {folder_info['missing_files']}")
             if folder_info['extra_files']:
-                print(f"    额外文件: {folder_info['extra_files']}")
+                print(f"    Extra files: {folder_info['extra_files']}")
         
         if len(incomplete_folders) > 10:
-            print(f"  ... 还有 {len(incomplete_folders) - 10} 个不完整文件夹未显示")
+            print(f"  ... {len(incomplete_folders) - 10} more incomplete folders not shown")
     
-    # 检查是否有重复的配置
+    # Check for duplicate configurations
     config_hashes = {}
     duplicate_configs = []
     
@@ -834,21 +833,21 @@ def check_generated_models(base_save_dir, expected_count):
                 else:
                     config_hashes[config_hash] = folder
             except Exception as e:
-                print(f"⚠️  无法读取 {model_json_path}: {e}")
+                print(f"⚠️  Cannot read {model_json_path}: {e}")
     
-    print(f"\n🔍 重复配置检查: 发现 {len(duplicate_configs)} 个重复配置")
+    print(f"\n🔍 Duplicate configuration check: Found {len(duplicate_configs)} duplicate configurations")
     if duplicate_configs:
-        for dup in duplicate_configs[:5]:  # 只显示前5个重复
-            print(f"  - {dup['folder']} 重复于 {dup['duplicate_of']}")
+        for dup in duplicate_configs[:5]:  # Only show first 5 duplicates
+            print(f"  - {dup['folder']} duplicate of {dup['duplicate_of']}")
         
         if len(duplicate_configs) > 5:
-            print(f"  ... 还有 {len(duplicate_configs) - 5} 个重复配置未显示")
+            print(f"  ... {len(duplicate_configs) - 5} more duplicate configurations not shown")
     
     return len(subdirectories), incomplete_folders, duplicate_configs
 
-# 示例用法
+# Example usage
 if __name__ == "__main__":
-    # 定义搜索空间
+    # Define search space
     search_space = {
         "stages": [1, 2, 3, 4],
         "conv_types": ["DWSepConv", "MBConv", "DpConv", "SeSepConv", "SeDpConv"],
@@ -863,71 +862,71 @@ if __name__ == "__main__":
         "blocks_per_stage": [1, 2],
         "quantization_modes": ["none", "static", "qat"]
     }
-    # 设置多进程启动方式
+    # Set multiprocessing start method
     mp.set_start_method('spawn', force=True)
-    # 设置信号处理，避免键盘中断时出现僵尸进程
+    # Set signal handling to avoid zombie processes on keyboard interrupt
     original_sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     try:
         signal.signal(signal.SIGINT, original_sigint)
-        # 初始化生成器
+        # Initialize generator
         generator = ArchitectureGenerator(search_space, seed=2002)
         
-        # 生成配置数量
-        num_configs = 12000  # 生成10000个不同的架构
-        num_threads = 4      # 使用4个线程
+        # Number of configurations to generate
+        num_configs = 12000  # Generate 10000 different architectures
+        num_threads = 4      # Use 4 threads
 
-        print(f"开始使用 {num_threads} 个线程生成 {num_configs} 个架构配置...")
+        print(f"Starting to generate {num_configs} architecture configurations using {num_threads} threads...")
 
-        # 使用分层抽样生成配置
+        # Generate configurations using stratified sampling
         configs = generator.generate_stratified_configs(num_configs, num_threads)
         
-        # 保存配置
-        # 设置保存目录
+        # Save configurations
+        # Set save directory
         base_save_dir = "/root/tinyml/weights/GNNpredictor_data"
-        # 创建时间戳子文件夹
+        # Create timestamp subfolder
         china_timezone = pytz.timezone("Asia/Shanghai")
         timestamp = datetime.now(china_timezone).strftime("%m-%d-%H-%M")
         save_dir = os.path.join(base_save_dir, timestamp)
         os.makedirs(save_dir, exist_ok=True)
 
-        # 创建日志目录
+        # Create log directory
         log_dir = os.path.join(save_dir, "logs")
         os.makedirs(log_dir, exist_ok=True)
 
-        # 创建任务队列和结果队列
+        # Create task and result queues
         manager = Manager()
         task_queue = manager.Queue()
         result_queue = manager.Queue()
 
-        # 将配置放入任务队列
+        # Put configurations into task queue
         for config, description in configs:
             task_queue.put((config, description))
 
-        # 创建 GPU 工作进程
+        # Create GPU worker processes
         num_gpus = 4
         processes = generator.create_gpu_processes(num_gpus, task_queue, result_queue, 
                                                    generator.dataset_name, save_dir, log_dir)
 
-        # # 发送结束信号给所有工作进程
+        # # Send termination signal to all worker processes
         for _ in range(num_gpus):
             task_queue.put(None)
 
-        # 等待所有进程完成
+        # Wait for all processes to complete
         for p in processes:
             p.join()
 
-        print("✅ 所有 GPU 工作进程完成")
+        print("✅ All GPU worker processes completed")
 
-        # 检查生成的模型
+        # Check generated models
         folder_count, incomplete_folders, duplicate_configs = check_generated_models(save_dir, len(configs))
 
-        print(f"📁 架构配置已保存到: {save_dir}")
-        print(f"📊 日志文件保存在: {log_dir}")
+        print(f"📁 Architecture configurations saved to: {save_dir}")
+        print(f"📊 Log files saved in: {log_dir}")
 
     except KeyboardInterrupt:
-        print("🛑 程序被用户中断")
+        print("🛑 Program interrupted by user")
     except Exception as e:
-        print(f"❌ 程序执行错误: {e}")
+        print(f"❌ Program execution error: {e}")
         import traceback
-        traceback.print_exc()    
+        traceback.print_exc()

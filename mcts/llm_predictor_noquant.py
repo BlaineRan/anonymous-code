@@ -10,46 +10,46 @@ import torch
 import sys
 from pathlib import Path
 
-# 添加predictor相关导入
+# Add predictor-related imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from GNNPredictor import ArchitectureEncoder
 from GNNPredictor import GNNPredictor
 
 
 def load_mhealth_architectures(file_path: str):
-    """加载 Mhealth 数据集的架构信息"""
+    """Load architecture details for the Mhealth dataset"""
     with open(file_path, 'r') as f:
         architectures = json.load(f)
     return architectures
 
-# 添加自定义异常类
+# Add custom exception class
 class CandidateQualityException(Exception):
-    """候选质量不达标异常"""
+    """Candidate quality failure exception"""
     def __init__(self, failure_report: Dict):
         self.failure_report = failure_report
-        super().__init__(f"候选质量不达标: {failure_report['valid_count']}/5 通过验证")
+        super().__init__(f"Candidate quality insufficient: {failure_report['valid_count']}/5 passed validation")
 
 class LLMPredictor:
-    """ 基于LLM的架构扩展器， 负责生成新的架构 """
+    """LLM-based architecture expander responsible for generating new architectures"""
     
     def __init__(self, llm_config: Dict[str, Any], search_space: Dict[str, Any], dataset_info: Dict[str, Any] = None, mcts_graph=None):
         self.llm = initialize_llm(llm_config)
         self.search_space = search_space
-        self.dataset_info = dataset_info or {}  # 新增： 存储数据集信息
+        self.dataset_info = dataset_info or {}  # Added: store dataset information
         self.max_retries = 2 
-        self.mcts_graph = mcts_graph  # 新增： 需要图结构来获取关系信息
+        self.mcts_graph = mcts_graph  # Added: need graph structure to obtain relational info
         self.current_valid_candidates = None
         self.valid_threshold = 3
         
-        # 初始化predictor
+        # Initialize predictor
         self.predictor = None
         self.encoder = None
         # self._initialize_predictor()
         
     def _initialize_predictor(self, dataset_name):
-        """初始化性能预测器"""
+        """Initialize performance predictor"""
         try:
-            # 根据数据集选择对应的 predictor 模型
+            # Select predictor model based on dataset
             model_paths = {
                 "UTD-MHAD": '/root/tinyml/GNNPredictor/model/UTD-MHAD/trained_predictor.pth',
                 "Wharf": '/root/tinyml/GNNPredictor/model/Wharf/trained_predictor.pth',
@@ -61,67 +61,67 @@ class LLMPredictor:
             model_path = model_paths.get(dataset_name, '/root/tinyml/GNNPredictor/model/UTD-MHAD/trained_predictor.pth')
             
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            print(f"📂 加载性能预测器: {model_path}")
+            print(f"📂 Loading performance predictor: {model_path}")
             
-            # 加载训练好的模型
+            # Load the trained model
             checkpoint = torch.load(model_path, map_location=device)
             
-            # 初始化编码器
+            # Initialize the encoder
             self.encoder = ArchitectureEncoder()
             
-            # 初始化模型
+            # Initialize the model
             self.predictor = GNNPredictor(input_dim=self.encoder.base_feature_dim + 1, output_dim=3)
             self.predictor.load_state_dict(checkpoint['model_state_dict'])
             self.predictor.to(device)
             self.predictor.eval()
             
-            print("✅ 性能预测器加载成功")
+            print("✅ Performance predictor loaded successfully")
             
         except Exception as e:
-            print(f"❌ 性能预测器初始化失败: {e}")
+            print(f"❌ Performance predictor initialization failed: {e}")
             self.predictor = None
 
     def set_mcts_graph(self, mcts_graph):
-        """设置MCTS图结构引用"""
+        """Set MCTS graph structure reference"""
         self.mcts_graph = mcts_graph
 
     def set_dataset_info(self, dataset_info: Dict[str, Any]):
-        """设置数据集信息"""
+        """Set dataset information"""
         self.dataset_info = dataset_info
         
     def expand_from_parent(self, parent_node: ArchitectureNode, dataset_name: str, 
                           dataset_info: Dict[str, Any], pareto_feedback: str, 
                           constraint_feedback: Optional[str] = None,
-                          global_successes: List[Dict] = None,  # 新增参数
+                          global_successes: List[Dict] = None,  # Added parameter
                           global_failures: List[Dict] = None) -> Optional[CandidateModel]:
-        """基于 父节点 和 反馈生成新的架构"""
+        """Generate new architectures based on the parent node and feedback"""
         
-        # 收集当前会话的约束违反历史
+        # Collect current session constraint violation history
         session_failures = []
         validation_feedback = constraint_feedback
-        last_valid_candidates = []  # 存储最后一次生成的候选架构
-        all_valid_candidates = []   # 存储所有尝试中通过验证的候选
+        last_valid_candidates = []  # Store the most recently generated candidates
+        all_valid_candidates = []   # Store all candidates that passed validation across attempts
         self.current_valid_candidates = []
 
         for attempt in range(self.max_retries):
             try:
-                print(f"🤖 LLM 扩展尝试 {attempt + 1}/{self.max_retries}")
+                print(f"🤖 LLM expansion attempt {attempt + 1}/{self.max_retries}")
                 
-                # 构建扩展上下文
+                # Build expansion context
                 context = self._build_expansion_context(parent_node, dataset_name, dataset_info, pareto_feedback,
                                                         validation_feedback, session_failures,
-                                                        global_successes, global_failures  # 传递全局经验
+                                                        global_successes, global_failures  # Pass global experience
                                                         )
                 print(f"context is over.\n")
-                # 生成扩展提示 - 现在要求生成 5 个候选
+                # Generate expansion prompt - now request 5 candidates
                 prompt = self._build_multiple_candidates_prompt(context)
                 
                 print(f"prompt is over.\n")
-                # 调用LLM
+                # Invoke the LLM
                 response = self.llm.invoke(prompt).content
-                print(f"-----------------LLM响应-----------------\n {response}")
+                print(f"-----------------LLM response-----------------\n {response}")
                 
-                # 解析响应
+                # Parse the response
                 candidates = self._parse_multiple_candidates_response(response)
 
                 if not candidates:
@@ -139,43 +139,43 @@ class LLMPredictor:
                     """
                     continue
                 
-                # 保存最后一次生成的候选架构
+                # Store the last set of generated candidates
                 last_valid_candidates = candidates
 
-                # 评审和选择最佳候选 - 现在包含质量控制
+                # Review and select the best candidate - now includes quality control
                 try:
                     best_candidate, current_valid_candidates = self._review_and_select_candidate(
                         candidates, dataset_name, attempt, session_failures, all_valid_candidates
                     )
-                    # 将本次尝试的验证通过的候选添加到总列表中
+                    # Add this attempt's validated candidates to the aggregated list
                     all_valid_candidates.extend(current_valid_candidates)
 
                     if best_candidate is None:
-                        # 如果所有候选都不合格，记录失败信息
+                        # Record failure if all candidates are invalid
                         session_failures.append({
                             'attempt': attempt + 1,
                             'failure_type': 'all_candidates_failed',
                             'suggestion': 'Unexpected error: no candidate selected despite passing quality control.'
                         })
                         continue
-                    # 选择的候选架构
-                    print(f"✅ 选择最佳候选架构 (尝试 {attempt + 1})")
+                    # Selected candidate architecture
+                    print(f"✅ Selected best candidate architecture (attempt {attempt + 1})")
                     return best_candidate
                 
                 except CandidateQualityException as e:
-                    # 捕获质量控制失败
+                    # Catch quality control failures
                     failure_report = e.failure_report
                     valid_count = failure_report['valid_count']
-                    print(f"❌ 候选质量控制失败: {valid_count}/5 通过验证")
+                    print(f"❌ Candidate quality control failed: {valid_count}/5 passed validation")
 
-                    # 即使质量控制失败， 也要将本次通过的候选添加到总列表中
-                    if self.current_valid_candidates:  # 确保 current_valid_candidates 在 try 块外可访问
+                    # Even if quality control fails, add this attempt's valid candidates to the aggregated list
+                    if self.current_valid_candidates:  # Ensure current_valid_candidates remains accessible outside the try block
                         all_valid_candidates.extend(self.current_valid_candidates)
-                        print(f"📝 将 {len(self.current_valid_candidates)} 个通过验证的候选添加到总列表")
+                        print(f"📝 Adding {len(self.current_valid_candidates)} validated candidates to the aggregated list")
 
-                    # 构建详细的失败反馈
+                    # Build detailed failure feedback
                     validation_feedback = self._build_quality_failure_feedback(failure_report, attempt)
-                    # 记录到session_failures
+                    # Record to session_failures
                     session_failures.append({
                         'attempt': attempt + 1,
                         'failure_type': 'quality_control_failed',
@@ -188,51 +188,51 @@ class LLMPredictor:
                     continue
                      
             except Exception as e:
-                print(f"LLM扩展失败: {str(e)}")
+                print(f"LLM expansion failed: {str(e)}")
                 session_failures.append({
                     'attempt': attempt + 1,
                     'failure_type': 'exception',
                     'suggestion': f'Error occurred: {str(e)}'
                 })
-        # 🔥 修正：如果所有尝试都失败，使用 predictor_score 进行后备选择
-        # 如果所有尝试都失败，则从所有通过验证的候选中选择最佳候选
+        # 🔥 Fix: use predictor_score as a fallback if all attempts fail
+        # If all attempts fail, select the best candidate from the validated pool
         if all_valid_candidates:
-            print(f"⚠️ 所有尝试均失败，从累计的 {len(all_valid_candidates)} 个通过验证的候选中选择最佳候选...")
+            print(f"⚠️ All attempts failed, selecting the best candidate from the accumulated {len(all_valid_candidates)} validated candidates...")
             
-            # 过滤掉重复的候选
+            # Filter out duplicate candidates
             unique_valid_candidates = []
             for cand_info in all_valid_candidates:
                 if not self._is_duplicate(cand_info['candidate']):
                     unique_valid_candidates.append(cand_info)
             
             if unique_valid_candidates:
-                # 🔥 修正：按照预测器分数排序（从高到低）
+                # 🔥 Fix: sort by predictor score (descending)
                 unique_valid_candidates.sort(key=lambda x: x['selected_score'], reverse=True)
                 
                 best_candidate_info = unique_valid_candidates[0]
                 best_candidate = best_candidate_info['candidate']
                 
-                print(f"{'=' * 20}\n🎯 后备选择最佳候选:\n{'=' * 20}\n")
-                print(f"   predictor分数: {best_candidate_info['predictor_score']}")
-                print(f"   有效内存: {best_candidate_info['effective_memory']:.1f}MB")
-                print(f"   量化模式: {best_candidate_info['quant_mode']}")
-                print(f"   模型架构：{best_candidate}")
+                print(f"{'=' * 20}\n🎯 Fallback selecting best candidate:\n{'=' * 20}\n")
+                print(f"   predictor score: {best_candidate_info['predictor_score']}")
+                print(f"   effective memory: {best_candidate_info['effective_memory']:.1f}MB")
+                print(f"   quantization mode: {best_candidate_info['quant_mode']}")
+                print(f"   Model architecture: {best_candidate}")
                 return best_candidate
             else:
-                print("❌ 所有通过验证的架构都是重复的")
+                print("❌ All validated architectures are duplicates")
 
-        print("❌ 完全无法生成符合条件的候选架构")
+        print("❌ Unable to generate any candidate meeting constraints")
         return None
     
     def _build_quality_failure_feedback(self, failure_report: Dict, attempt: int) -> str:
-        """构建质量控制失败的反馈信息"""
+        """Build feedback for quality control failures"""
         feedback_parts = [
             f"QUALITY CONTROL FAILED IN ATTEMPT {attempt + 1}:",
             f"- Only {failure_report['valid_count']}/5 candidates passed validation (need ≥3)",
             f"- Pass rate: {failure_report['pass_rate']:.1%}"
         ]
         
-        # 添加具体失败原因
+        # Add specific failure reasons
         if failure_report['failure_reasons']:
             feedback_parts.append("- Specific failure reasons:")
             for failure_type, failures in failure_report['failure_reasons'].items():
@@ -243,11 +243,11 @@ class LLMPredictor:
                 elif failure_type == 'parsing_error':
                     feedback_parts.append(f"  * Parsing errors: {len(failures)} candidates")
         
-        # 添加改进建议
+        # Add improvement suggestions
         feedback_parts.append("- Improvement strategies:")
         feedback_parts.append(failure_report['improvement_suggestions'])
         
-        # 添加内存分析
+        # Add memory analysis
         if failure_report['memory_analysis']:
             feedback_parts.append(f"- {failure_report['memory_analysis']}")
         
@@ -256,11 +256,11 @@ class LLMPredictor:
         return "\n".join(feedback_parts)
 
     def _validate_candidate(self, candidate: CandidateModel, dataset_name: str) -> tuple:
-        """验证候选架构的约束条件"""
+        """Validate candidate architecture constraints"""
         violations = []
         suggestions = []
         
-        # 检查 SeDpConv block 的约束
+        # Check constraints for SeDpConv blocks
         stages = candidate.config.get("stages", [])
         input_channels = candidate.config.get("input_channels", None)
 
@@ -274,31 +274,31 @@ class LLMPredictor:
             
             for block in stage.get("blocks", []):
                 if block.get("type") == "SeDpConv":
-                    # 检查 SeDpConv 的 channels 是否符合要求
+                    # Ensure SeDpConv channels meet requirements
                     if stage_index == 0:
-                        # 如果是第一个 stage，检查 input_channels 是否等于 stage 的 channels
+                        # For the first stage, confirm input_channels equals the stage channels
                         if stage_channels != input_channels:
                             print(f"SeDpConv in channels != out channels!")
                             violations.append(f"Stage {stage_index + 1} SeDpConv block violation: input_channels ({input_channels}) != stage_channels ({stage_channels})")
                             suggestions.append("- Ensure the input_channels match the stage_channels for the first stage.")
                     else:
-                        # 如果不是第一个 stage，检查前一个 stage 的 channels 是否等于当前 stage 的 channels
+                        # For later stages, ensure the previous stage's channels match the current stage's channels
                         prev_stage_channels = stages[stage_index - 1].get("channels", None)
                         if prev_stage_channels != stage_channels:
                             print(f"SeDpConv in channels != out channels!")
                             violations.append(f"Stage {stage_index + 1} SeDpConv block violation: prev_stage_channels ({prev_stage_channels}) != stage_channels ({stage_channels})")
                             suggestions.append("- Ensure the previous stage's channels match the current stage's channels for SeDpConv blocks.")
 
-        # 获取数据集信息
+        # Retrieve dataset information
         if dataset_name not in self.dataset_info:
-            return True, "", ""  # 如果没有数据集信息，跳过验证
+            return True, "", ""  # Skip validation when dataset information is missing
             
         dataset_info = self.dataset_info[dataset_name]
         
         if violations:
             return False, " | ".join(violations), "\n".join(suggestions)
         
-        # 计算内存使用量
+        # Calculate memory usage
         memory_usage = calculate_memory_usage(
             candidate.build_model(),
             input_size=(64, dataset_info['channels'], dataset_info['time_steps']),
@@ -309,32 +309,32 @@ class LLMPredictor:
         parameter_memory_mb = memory_usage['parameter_memory_MB']
         total_memory_mb = memory_usage['total_memory_MB']
         
-        # 设置候选模型的内存信息
+        # Set candidate model memory metadata
         candidate.estimate_total_size = total_memory_mb
         candidate.metadata['activation_memory_MB'] = activation_memory_mb
         candidate.metadata['parameter_memory_MB'] = parameter_memory_mb
         candidate.metadata['estimated_total_size_MB'] = total_memory_mb
 
-        # 获取约束限制
+        # Retrieve constraint limits
         max_peak_memory = float(self.search_space['constraints'].get('max_peak_memory', float('inf'))) / 1e6
         quant_mode = candidate.config.get('quant_mode', 'none')
 
-        # 如果量化模式为 static，则将内存估算值除以 4
-        # 修正：根据量化模式调整有效内存使用量和限制
+        # When quant_mode is static, divide the memory estimate by 4
+        # Patch: adjust effective memory and limits based on quantization mode
         if quant_mode == 'static' or quant_mode == 'qat':
-            effective_memory = total_memory_mb / 4  # 量化后内存为原来的1/4
-            effective_limit = max_peak_memory  # 最终限制保持不变
-            memory_context = f"量化前: {total_memory_mb:.2f}MB → 量化后: {effective_memory:.2f}MB"
-            print(f"⚙️ 静态量化模式: {memory_context}")
+            effective_memory = total_memory_mb / 4  # Quantized memory becomes one-fourth of the original
+            effective_limit = max_peak_memory  # Limit remains unchanged
+            memory_context = f"Before quantization: {total_memory_mb:.2f}MB → After quantization: {effective_memory:.2f}MB"
+            print(f"⚙️ Static quantization mode: {memory_context}")
         else:
             effective_memory = total_memory_mb
             effective_limit = max_peak_memory
-            memory_context = f"无量化: {effective_memory:.2f}MB"
+            memory_context = f"No quantization: {effective_memory:.2f}MB"
         
-        # 检查内存约束 - 使用有效内存和限制
+        # Check memory constraints using effective memory and limit
         estimated_total_size_status = f"Estimated Total Size: {memory_context}"
         
-        # 修正约束检查逻辑
+        # Fix constraint checking logic
         if effective_memory > 4 * effective_limit:
             estimated_total_size_status += f" (Exceeding 4x the maximum value {4 * effective_limit:.2f}MB)"
             violations.append(estimated_total_size_status)
@@ -342,7 +342,7 @@ class LLMPredictor:
                             "- Reduce model size by removing redundant blocks\n" 
                             "- Use DWSeqConv or DpConv or SeSepConv or SeDpConv instead of MBConv.\n"
                             "- SeDpConv is the lightest block.\n")
-            print(f"❌ 架构被拒绝: 有效内存 {effective_memory:.2f}MB 超过4倍限制")
+            print(f"❌ Architecture rejected: effective memory {effective_memory:.2f}MB exceeds 4x limit")
             
         elif effective_memory > effective_limit:
             estimated_total_size_status += f" (Exceeding the maximum value {effective_limit:.2f}MB, but within 4x)"
@@ -358,12 +358,12 @@ class LLMPredictor:
                                 "- Among them, MBConv can also reduce expansion appropriately!\n"
                                 "- Besides, you can replace MBConv with DWSeqConv/DpConv/SeSepConv/SeDpConv, which is the very effective method!\n"
                                 "(However, please note that when expansion=1, MBConv will have the same effect as DWSeqConv)")
-            print(f"⚠️ 架构需要优化: 有效内存 {effective_memory:.2f}MB 超过限制")
+            print(f"⚠️ Architecture needs optimization: effective memory {effective_memory:.2f}MB exceeds the limit")
         else:
             estimated_total_size_status += " (Compliant with constraints)"
-            print(f"✅ 内存约束检查通过: {memory_context}")
+            print(f"✅ Memory constraint check passed: {memory_context}")
 
-        # 检查延迟约束
+        # Check latency constraints
         latency = candidate.measure_latency(device='cpu', dataset_names=dataset_name)
         max_latency = float(self.search_space['constraints'].get('max_latency', float('inf')))
         latency_status = f"Latency: {latency:.2f}ms"
@@ -378,8 +378,8 @@ class LLMPredictor:
         else:
             latency_status += " (Compliant with constraints)"
         
-        # 打印验证结果
-        print("\n---- 约束验证结果 ----")
+        # Print validation results
+        print("\n---- Constraint validation results ----")
         print(f"estimated_total_size_MB: {total_memory_mb} MB")
         print(f"latency_status: {latency} ms")
         print("----------------------")
@@ -393,9 +393,9 @@ class LLMPredictor:
                                dataset_info: Dict[str, Any], pareto_feedback: str,
                                constraint_feedback: Optional[str] = None, 
                                session_failures: List[Dict] = None,
-                               global_successes: List[Dict] = None,  # 新增参数
+                               global_successes: List[Dict] = None,
                                global_failures: List[Dict] = None) -> Dict[str, Any]:
-        """构建扩展上下文"""
+        """Build expansion context"""
         context = {
             'dataset_name': dataset_name,
             'dataset_info': dataset_info,
@@ -405,12 +405,12 @@ class LLMPredictor:
             'session_failures': session_failures or []
         }
         
-        # 处理父节点信息 - 如果父节点为空或没有候选
+        # Handle parent node info - use empty context if no candidate
         if parent_node is None or parent_node.candidate is None:
-            print("⚠️ 父节点为空，使用空上下文")
+            print("⚠️ Parent node missing, using empty context")
             context['parent_architecture'] = None
         else:
-            print(f"使用父节点信息\n{'-' * 20}\nparent_node.candidate: {parent_node.candidate}")
+            print(f"Using parent node information\n{'-' * 20}\nparent_node.candidate: {parent_node.candidate}")
 
             context['parent_architecture'] = {
                 'config': parent_node.candidate.config,
@@ -430,19 +430,19 @@ class LLMPredictor:
                 }
             }
         
-        # 使用全局经验而不是父节点的经验
+        # Use global experience rather than parent-specific history
         context['experience'] = {
-            'successful_modifications': (global_successes or [])[-3:],  # 最近3条全局成功经验
-            'failed_modifications': (global_failures or [])[-3:]        # 最近3条全局失败经验
+            'successful_modifications': (global_successes or [])[-3:],  # Last 3 global successes
+            'failed_modifications': (global_failures or [])[-3:]        # Last 3 global failures
         }
         
         return context
     
     def _build_multiple_candidates_prompt(self, context: Dict[str, Any]) -> str:
-        """构建LLM扩展提示"""
+        """Build LLM expansion prompt"""
 
         dataset_info = context['dataset_info']
-        # 准备父节点信息
+        # Prepare parent node information
         parent_info = "None"
         if context.get('parent_architecture') is not None and 'parent_architecture' in context:
             parent = context['parent_architecture']
@@ -452,11 +452,11 @@ class LLMPredictor:
             - Latency: {parent['performance']['latency']:.1f}ms
             - Quantization: {parent['performance']['quantization_mode']}
             - MCTS Score: {parent['mcts_stats']['score']:.3f}
-            - Predictor Score: {parent.get('predictor_score', 'N/A')}  # 新增
+            - Predictor Score: {parent.get('predictor_score', 'N/A')}  # Added
             - Visits: {parent['mcts_stats']['visits']}
             - Evaluated: {parent['mcts_stats']['is_evaluated']}"""
 
-            # 如果架构开启了量化，补充量化前后的准确率对比
+            # If the architecture uses quantization, include pre/post accuracy comparison
             if parent['performance']['quantization_mode'] != 'none':
                 quantized_accuracy = parent['performance'].get('quantized_accuracy', 'N/A')
                 if isinstance(quantized_accuracy, (int, float)):
@@ -472,33 +472,33 @@ class LLMPredictor:
             parent_info += f"""
             - Configuration: {json.dumps(parent['config'], indent=2)}"""
         else:
-            parent_info = "None (初始节点，无父架构)"
+            parent_info = "None (initial node with no parent architecture)"
             
-        # 添加Pareto前沿反馈 （保持不变）  我不打算加在 prompt 里了
+        # Add Pareto frontier feedback (unchanged); I won't include it in the prompt anymore
         if context['pareto_feedback']:
             feedback = context.get('pareto_feedback', "No Pareto frontier feedback")
 
 
-        # 修正：准备失败案例信息 - 关注性能下降的修改
+        # Patch: prepare failure cases focusing on regressions
         failure_feedback = "None"
         if 'experience' in context and context['experience']['failed_modifications']:
             last_failures = context['experience']['failed_modifications'][-3:]
             failure_cases = []
             for f in last_failures:  
-                #   （性能下降）
+                #   (performance regression)
                 if f.get('type') == 'arch_expansion' and f.get('result_type') == 'failure':
                     case_info = f"- Score Change: {f.get('improvement', 0):.3f} (decreased)"
                     if 'config_diff' in f:
                         case_info += f"\n  Config Changes: {json.dumps(f['config_diff'], indent=2)}"
                     if 'failure_reason' in f:
                         case_info += f"\n  Reason: {f['failure_reason']}"
-                    # 为失败案例也添加性能信息
+                    # Include performance details for failure cases
                     if 'performance' in f:
                         perf = f['performance']
                         quant_mode = perf.get('quantization_mode', perf.get('quant_mode', 'none'))
                         if quant_mode != 'none':
                             case_info += f"\n  Quantization: {quant_mode.upper()}"
-                            # 准确率对比
+                            # Accuracy comparison
                             original_acc = perf.get('original_accuracy')
                             quantized_acc = perf.get('quantized_accuracy')
                             if original_acc is not None and quantized_acc is not None:
@@ -507,7 +507,7 @@ class LLMPredictor:
                             elif perf.get('accuracy') is not None:
                                 case_info += f"\n  Accuracy: {perf.get('accuracy'):.1f}%"
                             
-                            # 内存对比
+                            # Memory comparison
                             original_mem = perf.get('original_memory') or perf.get('memory_before_quant')
                             quantized_mem = perf.get('quantized_memory') or perf.get('memory_after_quant')
                             if original_mem is not None and quantized_mem is not None:
@@ -530,13 +530,13 @@ class LLMPredictor:
             if failure_cases:
                 failure_feedback = "\n".join(failure_cases)
 
-        # 修正：准备成功案例信息 - 关注性能提升的修改
+        # Patch: prepare success cases focusing on improvements
         success_feedback = "None"
         if 'experience' in context and context['experience']['successful_modifications']:
             last_successes = context['experience']['successful_modifications'][-3:]
             success_cases = []
             for s in last_successes:
-                # 只处理架构扩展类型的成功 （性能提升）
+                # Only handle architecture-expansion successes (performance improvements)
                 if s.get('type') == 'arch_expansion' and s.get('result_type') == 'success':
                     case_info = f"- Score Change: {s.get('improvement', 0):.3f} (improved)"
                     if 'config_diff' in s:
@@ -547,9 +547,9 @@ class LLMPredictor:
                         perf = s['performance']
                         quant_mode = perf.get('quantization_mode', 'none')
                         
-                        # 显示量化信息
+                        # Show quantization info
                         if quant_mode != 'none':
-                            # 量化架构：显示量化前后的准确率对比
+                            # Quantized architecture: show pre/post accuracy
                             original_acc = perf.get('original_accuracy', perf.get('accuracy', 0))
                             quantized_acc = perf.get('quantized_accuracy', perf.get('accuracy', 0))
                             if original_acc is not None and quantized_acc is not None:
@@ -558,25 +558,25 @@ class LLMPredictor:
                             elif perf.get('accuracy') is not None:
                                 case_info += f"\n  Accuracy: {perf.get('accuracy'):.1f}%"
 
-                            # 量化前后内存对比
+                            # Quantized memory comparison
                             original_mem = perf.get('original_memory') or perf.get('memory_before_quant')
                             quantized_mem = perf.get('quantized_memory') or perf.get('memory_after_quant')
                             if original_mem is not None and quantized_mem is not None:
                                 compression_ratio = original_mem / quantized_mem if quantized_mem > 0 else 0
                                 case_info += f"\n  Memory: {original_mem:.1f}MB → {quantized_mem:.1f}MB ({compression_ratio:.1f}x compression)"
                             elif perf.get('memory') is not None:
-                                # 如果没有明确的量化前后对比，但有当前内存，假设这是量化后的
+                                # If no explicit pre/post comparison but current memory is available, assume it's post-quantization
                                 current_mem = perf.get('memory')
-                                theoretical_original = current_mem * 4  # 理论上量化前是4倍
+                                theoretical_original = current_mem * 4  # Theoretical pre-quantization is 4x
                                 case_info += f"\n  Memory: ~{theoretical_original:.1f}MB → {current_mem:.1f}MB (~4x compression)"
 
                         else:
-                            # 非量化架构：显示单一准确率
+                            # Non-quantized architecture: show single accuracy
                             accuracy = perf.get('accuracy', 0)
                             memory = perf.get('memory', 0)
                             case_info += f"\n  Performance: Acc={accuracy:.1f}%, Mem={memory:.1f}MB"
                         
-                        # 显示延迟信息
+                        # Show latency info
                         latency = perf.get('latency', 0)
                         if latency > 0:
                             case_info += f", Lat={latency:.1f}ms"
@@ -588,36 +588,36 @@ class LLMPredictor:
                 success_feedback = "\n".join(success_cases)
         
         
-        # 当前会话的约束违反反馈 （这个很重要！）
+        # Current session constraint feedback (this is important!)
         session_constraint_feedback = "None"
         if context.get('session_failures'):
             feedback_items = []
             for failure in context['session_failures']:
                 item = f"Attempt {failure['attempt']}: Candidate {failure.get('candidate_id', '?')} - {failure.get('failure_type', 'Unknown')}"
-                # 显示内存信息
+                # Show memory information
                 if failure.get('estimated_memory'):
                     item += f"\n  - Memory: {failure['estimated_memory']}MB"
                 
-                # 显示量化模式
+                # Show quantization mode
                 if failure.get('quant_mode'):
                     item += f"\n  - Quantization: {failure['quant_mode']}"
                 
-                # 显示具体原因
+                # Show specific reason
                 if failure.get('failure_reason'):
                     item += f"\n  - Reason: {failure['failure_reason']}"
 
-                # 显示配置摘要
+                # Show configuration summary
                 if failure.get('config'):
                     config = failure['config']
                     stages = len(config.get('stages', []))
                     total_blocks = sum(len(stage.get('blocks', [])) for stage in config.get('stages', []))
                     item += f"\n  - Architecture: {stages} stages, {total_blocks} blocks"
                     item += f"\n  - Quant mode: {config.get('quant_mode', 'none')}"
-                    # 将config压缩到一行，移除换行符和多余空格
-                    config_str = json.dumps(config, separators=(',', ':'))  # 使用最小化的JSON格式
+                    # Compress config to a single line by removing newlines and extra whitespace
+                    config_str = json.dumps(config, separators=(',', ':'))  # Use minimized JSON format
                     item += f"\n  - Config: {config_str}"
                 
-                # 显示建议
+                # Show suggestions
                 if failure.get('suggestions'):
                     item += f"\n  - Fix: {failure['suggestions']}"
 
@@ -625,15 +625,15 @@ class LLMPredictor:
 
             session_constraint_feedback = "\n".join(feedback_items)
         
-        # 新增：来自验证器的即时约束反馈
+        # Added: immediate constraint feedback from the validator
         immediate_constraint_feedback = context.get('constraint_feedback', "None")
 
-        # 读取JSON文件
+        # Read JSON file
         # model_wharf
         with open('/root/tinyml/arch_files/model_wharf.json', 'r') as f:
             data = json.load(f)
 
-        # 提取架构信息
+        # Extract architecture information
         arch_info = []
         # **Accuracy={model['accuracy']}%**
         for model in data['model_comparisons']:
@@ -641,20 +641,20 @@ class LLMPredictor:
             info = info + f"Config: {json.dumps(model['config'], separators=(',', ':'))}\n"
             arch_info.append(info)
 
-        # 将信息连接成一个字符串，用空格分隔
+        # Join the information into a single string separated by spaces
         basic_conv_info = " ".join(arch_info)
 
-        # 添加约束条件（保持不变）
+        # Add constraint conditions (unchanged)
         constraints = {
             'max_peak_memory': float(self.search_space['constraints']['max_peak_memory']) / 1e6,
             'max_latency': float(self.search_space['constraints']['max_latency'])
         }
         # print(f"constraints: {constraints}")
         max_peak_memory = str(constraints['max_peak_memory'])
-        quant_max_memory = str(constraints['max_peak_memory'] * 4)  # 量化后内存限制为4倍
-        expected_memory = str(constraints['max_peak_memory'] * 0.75)  # 期望内存为3倍
-        expected_quant_memory = str(constraints['max_peak_memory'] * 3)  # 期望内存为4倍
-        # 删除了 pareto 前沿，只保留父节点，成功修改的提示
+        quant_max_memory = str(constraints['max_peak_memory'] * 4)  # Quantized memory limit is 4x
+        expected_memory = str(constraints['max_peak_memory'] * 0.75)  # Expected memory is 0.75x peak
+        expected_quant_memory = str(constraints['max_peak_memory'] * 3)  # Expected quant memory is 3x peak
+        # Removed Pareto frontier; only keep parent and successful modification cues
         prompt = """
             You are a neural architecture optimization expert. 
             Based on the search context, generate 5 DIFFERENT architecture candidates that improves upon the parent architecture.
@@ -802,14 +802,14 @@ class LLMPredictor:
                     parent_performance=parent_info
                 )
         
-        print(f"生成的提示:\n{prompt}\n")
+        print(f"Generated prompt:\n{prompt}\n")
 
         return prompt
     
     def _parse_multiple_candidates_response(self, response: str) -> Optional[List[CandidateModel]]:
-        """解析LLM响应为多个CandidateModel"""
+        """Parse the LLM response into multiple CandidateModel instances"""
         try:
-            # 提取JSON配置
+            # Extract JSON configuration
             json_match = re.search(r'```json(.*?)```', response, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1).strip()
@@ -820,18 +820,18 @@ class LLMPredictor:
                 else:
                     return None
             
-            # 解析JSON
+            # Parse JSON
             response_data = json.loads(json_str)
             candidates_data = response_data.get('candidates', [])
             
             if len(candidates_data) != 5:
-                print(f"❌ 期望5个候选，但得到了{len(candidates_data)}个")
+                print(f"❌ Expected 5 candidates but got {len(candidates_data)}")
 
             candidates = []
             for i, candidate_data in enumerate(candidates_data, 1):
                 try:
                     if not all(k in candidate_data for k in ['stages', 'input_channels', 'num_classes']):
-                        print(f"❌ 候选{i}缺少必要字段")
+                        print(f"❌ Candidate {i} is missing required fields")
                         continue
                     
                     candidate = CandidateModel(config=candidate_data)
@@ -839,18 +839,18 @@ class LLMPredictor:
                     candidates.append(candidate)
                     
                 except Exception as e:
-                    print(f"❌ 解析候选{i}失败: {str(e)}")
+                    print(f"❌ Failed to parse candidate {i}: {str(e)}")
                     continue
             
-            print(f"✅ 成功解析{len(candidates)}/5个候选架构")
+            print(f"✅ Successfully parsed {len(candidates)}/5 candidate architectures")
             return candidates
             
         except Exception as e:
-            print(f"解析LLM响应失败: {str(e)}")
+            print(f"Failed to parse LLM response: {str(e)}")
             return []
         
     def _evaluate_with_predictor(self, candidate: CandidateModel, dataset_name: str, quant_mode: str) -> float:
-        """使用预测器评估候选架构的性能"""
+        """Evaluate candidate architecture performance with the predictor"""
         if self.predictor is None or self.encoder is None:
             return {
                 'original': 0.1,
@@ -859,41 +859,41 @@ class LLMPredictor:
             }
         
         try:
-            # 将候选架构的 config 转换为图数据
+            # Convert the candidate config to graph data
             graph_data = self.encoder.config_to_graph(candidate.config)
             
-            # 确保图数据在正确的设备上
+            # Ensure graph data is on the correct device
             device = next(self.predictor.parameters()).device
             graph_data = graph_data.to(device)
             
-            # 使用预测器进行预测
+            # Predict with the predictor
             with torch.no_grad():
                 prediction = self.predictor(graph_data)
-                # print(f"🔍 predictor 输出形状: {prediction.shape}")  # 检查输出形状
+                # print(f"🔍 predictor output shape: {prediction.shape}")  # Check the output shape
 
-                # 去掉多余的维度，将 [1, 3] 转换为 [3]
+                # Remove the extra dimension, converting [1, 3] to [3]
                 if prediction.dim() > 1:
                     prediction = prediction.squeeze(0)
                 print(f"prediction: {prediction}")
-                # 预测器输出三个值：[original, quantized, qat]
+                # Predictor outputs three values: [original, quantized, qat]
                 predictor_scores = {
-                    'original': max(0.0, min(1.0, (prediction[0].item())/100)),  # 原始准确率预测
-                    'quantized': max(0.0, min(1.0, (prediction[1].item())/100)),  # 静态量化准确率预测
-                    'qat': max(0.0, min(1.0, (prediction[2].item())/100))         # QAT 准确率预测
+                    'original': max(0.0, min(1.0, (prediction[0].item())/100)),  # Original accuracy prediction
+                    'quantized': max(0.0, min(1.0, (prediction[1].item())/100)),  # Static quantization accuracy prediction
+                    'qat': max(0.0, min(1.0, (prediction[2].item())/100))         # QAT accuracy prediction
                 }
 
             return predictor_scores
             
         except Exception as e:
-            print(f"❌ 预测器评估异常: {e}")
-            # 发生异常时返回默认分数
+            print(f"❌ Predictor evaluation exception: {e}")
+            # Return default scores when an exception occurs
             return {
                 'original': 0.1,
                 'quantized': 0.1,
                 'qat': 0.1
             }
     def _calculate_memory_score(self, memory: float, target_min: float, target_max: float) -> float:
-        """计算内存分数"""
+        """Calculate memory score"""
         if memory > target_max:
             return -1.0
         elif memory < target_min * 0.5:
@@ -907,44 +907,44 @@ class LLMPredictor:
                                 dataset_name: str, attempt: int,
                                 session_failures: List[Dict],
                                 all_valid_candidates: List[Dict] = None) -> tuple[Optional['CandidateModel'], List[Dict]]:
-        """评审5个候选并选择最佳的一个，增加去重逻辑
-        返回: (最佳候选, 本次尝试中所有通过验证的候选列表)
+        """Review five candidates and select the best with deduplication logic.
+        Returns: (best candidate, list of candidates that passed validation in this attempt)
         """
         
         if not candidates:
             return None, []
         
-        print(f"\n🔍 开始评审{len(candidates)}个候选架构...")
+        print(f"\n🔍 Starting review of {len(candidates)} candidate architectures...")
         
         valid_candidates = []
-        validation_details = []  # 记录每个候选的验证详情
-        current_valid_candidates = []  # 本次尝试中通过验证的候选（用于累积）
+        validation_details = []  # Record validation details for each candidate
+        current_valid_candidates = []  # Candidates that passed validation in this attempt (for accumulation)
 
-        # 在方法开始时初始化 predictor
+        # Initialize the predictor at the start of the method
         if self.predictor is None:
-            self._initialize_predictor(dataset_name)  # 传入 dataset_name
+            self._initialize_predictor(dataset_name)  # Pass in dataset_name
         
-        # 获取数据集信息用于输入形状
+        # Retrieve dataset info for input shape
         dataset_info = self.dataset_info[dataset_name]
         input_shape = (dataset_info['channels'], dataset_info['time_steps'])
 
-        # 这个地方不再是内存了，而是predictor的得分，如果都很低，那就不太行。
-        # 应该是先查一遍这个数据集的accuracy的范围，然后根据范围来设置期望。
-        
-        # 获取内存约束和期望值
+        # This is no longer just about memory; it's the predictor score, so low scores are problematic.
+        # Ideally, determine the dataset's accuracy range and set expectations accordingly.
+       
+        # Retrieve memory constraints and expectations
         max_peak_memory = float(self.search_space['constraints'].get('max_peak_memory', float('inf'))) / 1e6
         non_quant_expect_min = max_peak_memory * 0.75
         quant_expect_min = max_peak_memory * 3.0
-        min_memory_threshold = max_peak_memory * 0.4  # 新增：内存过小的阈值
+        min_memory_threshold = max_peak_memory * 0.4  # Added: threshold for memory being too small
         
         for i, candidate in enumerate(candidates, 1):
             try:
-                print(f"\n--- 评估候选 第 {i} 个 Candidate。---")
-                
-                # 基础约束验证
+                print(f"\n--- Evaluating candidate {i} ---")
+               
+                # Basic constraint validation
                 is_valid, failure_reason, suggestions = self._validate_candidate(candidate, dataset_name)
                 
-                # 记录验证详情 （无论成功失败）
+                # Record validation details regardless of success or failure
                 validation_detail = {
                     'candidate_id': i,
                     'is_valid': is_valid,
@@ -953,9 +953,9 @@ class LLMPredictor:
                 }
 
                 if not is_valid:
-                    print(f"❌ 候选{i}约束验证失败: {failure_reason}")
+                    print(f"❌ Candidate {i} failed constraint validation: {failure_reason}")
                     validation_details.append(validation_detail)
-                    # 记录详细的失败信息到 session_failures
+                    # Log detailed failure info to session_failures
                     failure_info = {
                         'attempt': attempt + 1,
                         'failure_type': 'constraint_violation',
@@ -967,7 +967,7 @@ class LLMPredictor:
                         'suggestions': suggestions,
                         'violation_types': []
                     }
-                    # 分析具体的违反类型
+                    # Analyze specific violation types
                     if 'memory' in failure_reason.lower() or 'exceeding' in failure_reason.lower():
                         failure_info['violation_types'].append('memory_constraint')
                     if 'latency' in failure_reason.lower():
@@ -976,14 +976,14 @@ class LLMPredictor:
                     session_failures.append(failure_info)
                     continue
 
-                # 检查是否重复
+                # Check for duplicates
                 if self._is_duplicate(candidate):
-                    print(f"❌ 候选{i}重复，跳过")
+                    print(f"❌ Candidate {i} is a duplicate, skipping")
                     validation_detail['is_duplicate'] = True
                     validation_details.append(validation_detail)
-                    # 记录重复的架构信息 到 session_failures
+                    # Record duplicate architecture info to session_failures
                     duplicate_info = {
-                        'attempt': attempt + 1,  # 修正：使用当前 attempt
+                        'attempt': attempt + 1,  # Fix: use the current attempt
                         'failure_type': 'duplicate_candidate',
                         'candidate_id': i,
                         'config': candidate.config,
@@ -994,7 +994,7 @@ class LLMPredictor:
                     session_failures.append(duplicate_info)
                     continue
                 
-                # 计算有效内存和内存分数
+                # Compute effective memory and memory score
                 dataset_info = self.dataset_info[dataset_name]
                 memory_usage = calculate_memory_usage(
                     candidate.build_model(),
@@ -1005,28 +1005,28 @@ class LLMPredictor:
                 original_memory = memory_usage['total_memory_MB']
                 quant_mode = candidate.config.get('quant_mode', 'none')
                 
-                # 计算有效内存（用于比较）
+                # Compute effective memory (for comparisons)
                 if quant_mode == 'static' or quant_mode == 'qat':
-                    effective_memory = original_memory / 4  # 量化后的 实际内存
-                    expect_min = non_quant_expect_min  # 期望的 最终内存
-                    # 内存分数： 原始内存越接近 quant_expect_min 越好
+                    effective_memory = original_memory / 4  # Actual memory after quantization
+                    expect_min = non_quant_expect_min  # Expected final memory target
+                    # Memory score: higher when original memory is closer to quant_expect_min
                     memory_score = self._calculate_memory_score(original_memory, quant_expect_min, max_peak_memory * 4)
-                    memory_type = f"量化模型 ({original_memory:.1f}MB -> {effective_memory:.1f}MB)"
+                    memory_type = f"Quantized model ({original_memory:.1f}MB -> {effective_memory:.1f}MB)"
                 else:
                     effective_memory = original_memory
                     expect_min = non_quant_expect_min
-                    # 内存分数： 内存越接近 expect_max 越好
+                    # Memory score: higher when memory approaches expect_max
                     memory_score = self._calculate_memory_score(original_memory, non_quant_expect_min, max_peak_memory)
-                    memory_type = f"非量化模型 ({effective_memory:.1f}MB)"
+                    memory_type = f"Non-quantized model ({effective_memory:.1f}MB)"
                 
-                print(f"💾 {memory_type}, 内存分数: {memory_score:.3f}")
+                print(f"💾 {memory_type}, memory score: {memory_score:.3f}")
                 
-                # 检查是否达到期望内存
-                meets_expectation = effective_memory >= expect_min * 0.9  # 允许 10% 的容差
+                # Check if expected memory is reached
+                meets_expectation = effective_memory >= expect_min * 0.9  # Allow 10% tolerance
                 min_standard = True
-                # 新增逻辑：检查内存是否过小
+                # Added logic: check if the memory is too small
                 if effective_memory < min_memory_threshold:
-                    print(f"⚠️ 候选{i}内存过小，仅 {effective_memory:.1f}MB，低于阈值 {min_memory_threshold:.1f}MB")
+                    print(f"⚠️ Candidate {i} memory is too small: {effective_memory:.1f}MB (< threshold {min_memory_threshold:.1f}MB)")
                     session_failures.append({
                         'attempt': attempt + 1,
                         'failure_type': 'memory_too_small',
@@ -1037,40 +1037,32 @@ class LLMPredictor:
                         'failure_reason': f"Memory too small: {effective_memory:.1f}MB (threshold: {min_memory_threshold:.1f}MB)",
                         'suggestions': f"You should generate a schema that is within the expected memory range {non_quant_expect_min}-{max_peak_memory}.- Increase the model size by adding more blocks, stages, or channels.\n- Add stages or use other Conv block such as DWSepConv\MBConv\DpConv\SeSepConv.\n- The model architecture using static or qat should be larger than that without quantification to ensure that the memory is within the expected range."
                     })
-                    # 不在因为内存不足而影响次轮 valid model rate
+                    # Do not let low memory penalize the next round's valid model rate
                     min_standard = False
-                    # continue  # 跳过此候选
+                    # continue  # Skip this candidate
 
-                # 🔥 使用Predictor方法评估架构质量
-                print(f"🧠 使用model performance Predictor 方法评估候选{i}...")
+                # 🔥 Use the predictor-based method to assess architecture quality
+                print(f"🧠 Evaluating candidate {i} with the model performance predictor...")
                 try:
                     model = candidate.build_model()
-                    # 使用 predictor 而不是 proxy
-                    # 这里会得到三种 quant mode 的预测结果
+                    # Use the predictor instead of a proxy
+                    # This yields predictions for three quant modes
                     predictor_score = self._evaluate_with_predictor(candidate, dataset_name, quant_mode)
 
                     
                     print(f"📊 {memory_type}")
-                    print(f"   Predictor 预测分数: {predictor_score}")
-                    # 这个地方，predictor是会把三种方法的准确率都评估出来，如果static\qat\original哪个高选哪个
-                    # 如果能original的话，当然是优先original
+                    print(f"   Predictor score: {predictor_score}")
+                    # The predictor evaluates accuracy for static, QAT, and original, so pick the highest
+                    # Prefer original mode when it is available
                     if original_memory <= max_peak_memory:
-                        # 之前获取predictor_score分数最高的key，设置为candidate的config
-                        # optimize_quant_mode = max(predictor_score, key=predictor_score.get)
-                        # 将 predictor_score 的 key 转换为 config 的 quant_mode
-                        # quant_mode_mapping = {
-                        #     'original': 'none',
-                        #     'quantized': 'static',
-                        #     'qat': 'qat'
-                        # }
-                        # candidate.config['quant_mode'] = quant_mode_mapping[optimize_quant_mode]
-                        # candidate.metadata['quantization_mode'] = quant_mode_mapping[optimize_quant_mode]
+                        # Determine which predictor_score key is highest and set the candidate config accordingly
+                        # Example mapping between predictor_score keys and config quant_mode
                         candidate.config['quant_mode'] = 'none'
                         candidate.metadata['quantization_mode'] = 'none'
                         # candidate_info['candidate'].config['quant_mode'] = quant_mode_mapping[optimize_quant_mode]
                         selected_score = predictor_score['original']
                     else:
-                        # 如果original_memory 超过了 max_peak_memory ，那就只能量化了
+                        # If original_memory exceeds max_peak_memory, quantization is required
                         if predictor_score['quantized'] >= predictor_score['qat']:
                             candidate.config['quant_mode'] = 'static'
                             candidate.metadata['quantization_mode'] = 'static'
@@ -1084,29 +1076,29 @@ class LLMPredictor:
                             selected_score = predictor_score['qat']
 
                 except Exception as e:
-                    print(f"⚠️ predictor方法评估失败: {e}")
+                    print(f"⚠️ Predictor evaluation method failed: {e}")
                     predictor_score = {
                         'original': 0.1,
                         'quantized': 0.1,
                         'qat': 0.1
-                    }  # 给每种量化模式一个较低的默认分数
+                    }  # Provide a low default score for each quantization mode
                     
-                # 这里才定义了 candidate_info ， 前面就直接
-                # 这是对的吗
+                # candidate_info is defined here; earlier code assumed it existed directly
+                # Is that correct?
                 candidate_info = {
                     'candidate': candidate,
-                    'predictor_score': predictor_score,  # 替代memory_score
+                    'predictor_score': predictor_score,  # Replace memory_score
                     'memory_score': memory_score,
                     'effective_memory': effective_memory,
                     'original_memory': original_memory,
                     'meets_expectation': meets_expectation,
-                    'quant_mode': candidate.config['quant_mode'],  # 使用已更新的 quant_mode
+                    'quant_mode': candidate.config['quant_mode'],  # Use the updated quant_mode
                     'min_standard': min_standard,
-                    'selected_score': selected_score  # 添加 selected_score
+                    'selected_score': selected_score  # Add selected_score
                 }
                 
                 valid_candidates.append(candidate_info)
-                current_valid_candidates.append(candidate_info)  # 添加到本次验证通过的列表
+                current_valid_candidates.append(candidate_info)  # Add to this attempt's validated list
                 validation_details.append({
                     'candidate_id': i,
                     'is_valid': True,
@@ -1116,85 +1108,85 @@ class LLMPredictor:
                     'meets_expectation': meets_expectation,
                     'min_standard': min_standard
                 })
-                print(f"✅ 候选{i}通过验证， 期望达成: {meets_expectation} 预测器分数: {predictor_score}")
+                print(f"✅ Candidate {i} passed validation, expectation met: {meets_expectation}, predictor score: {predictor_score}")
                 
             except Exception as e:
-                print(f"❌ 候选{i}评估失败: {str(e)}")
+                print(f"❌ Candidate {i} evaluation failed: {str(e)}")
                 validation_details.append({
                     'candidate_id': i,
                     'is_valid': False,
-                    'failure_reason': f"评估异常: {str(e)}",
-                    'suggestions': "检查架构配置是否正确"
+                    'failure_reason': f"Evaluation exception: {str(e)}",
+                    'suggestions': "Check that the architecture configuration is correct"
                 })
                 continue
-        # 检查通过验证的候选数量
-        # 这个检验不能仅仅通过len函数，还要检查 min_standard
+        # Check the number of candidates that passed validation
+        # This check must consider min_standard, not just len
         # valid_count = len(valid_candidates)
         valid_count = sum(1 for v in valid_candidates if v['min_standard'])
         total_count = len(candidates)
         pass_rate = valid_count / total_count if total_count > 0 else 0
         
-        print(f"\n📊 验证结果统计:")
-        print(f"   总候选数: {total_count}")
-        print(f"   通过验证: {valid_count}")
-        print(f"   通过率: {pass_rate:.1%}")
+        print(f"\n📊 Validation result summary:")
+        print(f"   Total candidates: {total_count}")
+        print(f"   Validated: {valid_count}")
+        print(f"   Pass rate: {pass_rate:.1%}")
 
-        # 质量控制： 至少需要3个候选通过验证（ 60%通过率 ）
+        # Quality control: require at least 3 candidates to pass validation (60% pass rate)
         if valid_count < self.valid_threshold:
-            print(f"❌ 质量控制失败: 只有{valid_count}/5个候选通过验证， 低于最低要求(3个)")
+            print(f"❌ Quality control failed: only {valid_count}/5 candidates passed validation, below the minimum (3)")
         
-            # 构建详细的失败报告
+            # Build a detailed failure report
             failure_report = self._build_validation_failure_report(validation_details, attempt)
-            # 确保 failure_report 中的 valid_count 正确
+            # Ensure valid_count in failure_report is accurate
             self.current_valid_candidates = current_valid_candidates
             failure_report['valid_count'] = valid_count
             failure_report['pass_rate'] = pass_rate
             
-            # 抛出特殊异常，包含失败详情， 这将被上层捕获并添加到 session_failures
+            # Raise a special exception with failure details to be added to session_failures
             raise CandidateQualityException(failure_report)
 
         if not valid_candidates:
-            print("❌ 没有候选通过基础验证")
+            print("❌ No candidate passed the basic validation")
             return None, current_valid_candidates
         
-        # 🔥 选择策略：优先选预测器分数最高的
+        # 🔥 Selection strategy: prefer the highest predictor score
         valid_candidates.sort(key=lambda x: x['selected_score'], reverse=True)
         
         selected = valid_candidates[0]
-        print(f"\n🎯 选择最佳候选:")
-        print(f"   策略: {selected['candidate'].metadata.get('strategy', 'Unknown')}")
-        print(f"   量化模式: {selected['quant_mode']}")
-        print(f"   原始内存: {selected['original_memory']:.1f}MB")
-        print(f"   有效内存: {selected['effective_memory']:.1f}MB") 
-        print(f"   内存分数: {selected['memory_score']:.3f}")
-        print(f"   🧠 Predictor 预测器分数: {selected['predictor_score']}")
-        print(f"   内存期望达成: {selected['meets_expectation']}")
+        print(f"\n🎯 Selected best candidate:")
+        print(f"   Strategy: {selected['candidate'].metadata.get('strategy', 'Unknown')}")
+        print(f"   Quantization mode: {selected['quant_mode']}")
+        print(f"   Original memory: {selected['original_memory']:.1f}MB")
+        print(f"   Effective memory: {selected['effective_memory']:.1f}MB") 
+        print(f"   Memory score: {selected['memory_score']:.3f}")
+        print(f"   🧠 Predictor score: {selected['predictor_score']}")
+        print(f"   Memory expectation met: {selected['meets_expectation']}")
         
-        # 打印所有候选的比较
-        print(f"\n📊 所有候选比较:")
+        # Print comparison of all candidates
+        print(f"\n📊 All candidate comparisons:")
         for i, cand in enumerate(valid_candidates, 1):
-            status = "✅ 选中" if i == 1 else "  "
-            print(f"{status} 候选{i}: {cand['effective_memory']:.1f}MB (Predictor分数: {cand['predictor_score']})")
+            status = "✅ Selected" if i == 1 else "  "
+            print(f"{status} Candidate {i}: {cand['effective_memory']:.1f}MB (Predictor score: {cand['predictor_score']})")
         
         return selected['candidate'], current_valid_candidates
     
     def _is_duplicate(self, candidate: CandidateModel) -> bool:
-        """检查候选架构是否与已有架构重复"""
+        """Check if the candidate architecture duplicates any existing architecture"""
         if self.mcts_graph is None:
             return False
 
         for node in self.mcts_graph.nodes.values():
             if node.candidate and node.candidate.config == candidate.config:
-                print(f"⚠️ 架构重复: {json.dumps(candidate.config, indent=2)}")
+                print(f"⚠️ Architecture duplicate: {json.dumps(candidate.config, indent=2)}")
                 return True
         return False
     
     def _build_validation_failure_report(self, validation_details: List[Dict], attempt: int) -> Dict:
-        """构建验证失败报告"""
+        """Build validation failure report"""
         failed_candidates = [v for v in validation_details if not v['is_valid']]
         valid_candidates = [v for v in validation_details if v['is_valid']]
         
-        # 分析失败原因
+        # Analyze failure reasons
         failure_reasons = {}
         for failed in failed_candidates:
             reason = failed.get('failure_reason', 'Unknown')
@@ -1202,7 +1194,7 @@ class LLMPredictor:
                 failure_type = 'memory_constraint'
             elif 'latency' in reason.lower():
                 failure_type = 'latency_constraint'
-            elif '解析' in reason or 'parsing' in reason.lower():
+            elif 'parsing' in reason.lower() or 'parse' in reason.lower():
                 failure_type = 'parsing_error'
             else:
                 failure_type = 'other_constraint'
@@ -1215,14 +1207,14 @@ class LLMPredictor:
                 'suggestions': failed.get('suggestions', '')
             })
         
-        # 分析有效候选的内存分布
+        # Analyze the memory distribution of valid candidates
         memory_analysis = ""
         if valid_candidates:
             memories = [v.get('effective_memory', 0) for v in valid_candidates]
             avg_memory = sum(memories) / len(memories)
             max_memory = max(memories)
             min_memory = min(memories)
-            memory_analysis = f"有效候选内存范围: {min_memory:.1f}MB - {max_memory:.1f}MB (平均: {avg_memory:.1f}MB)"
+            memory_analysis = f"Effective candidate memory range: {min_memory:.1f}MB - {max_memory:.1f}MB (avg: {avg_memory:.1f}MB)"
         
         report = {
             'attempt': attempt,
@@ -1238,7 +1230,7 @@ class LLMPredictor:
         return report
     
     def _generate_improvement_suggestions(self, failure_reasons: Dict, valid_candidates: List[Dict]) -> str:
-        """根据失败原因生成改进建议"""
+        """Generate improvement suggestions based on failure reasons"""
         suggestions = []
         
         if 'memory_constraint' in failure_reasons:
@@ -1256,7 +1248,7 @@ class LLMPredictor:
             suggestions.append("   - Reduce the expansion ratio")
             suggestions.append("   - Use fewer blocks")
         
-        # 如果有有效候选，分析其特征
+        # If there are valid candidates, analyze their characteristics
         if valid_candidates:
             avg_memory = sum(v.get('effective_memory', 0) for v in valid_candidates) / len(valid_candidates)
             suggestions.append(f"✅ Effective candidate average memory: {avg_memory:.1f}MB")
@@ -1270,7 +1262,7 @@ class LLMPredictor:
 
     def _record_successful_modification(self, parent_node: ArchitectureNode, 
                                      candidate: CandidateModel, attempt: int):
-        """记录成功的修改到父节点"""
+        """Record a successful modification on the parent node"""
         modification = {
             'type': 'llm_expansion',
             'config': candidate.config,
@@ -1283,7 +1275,7 @@ class LLMPredictor:
     def _record_failed_modification(self, parent_node: ArchitectureNode, 
                                   candidate: CandidateModel, failure_reason: str, 
                                   suggestions: str, attempt: int):
-        """记录失败的修改到父节点"""
+        """Record a failed modification on the parent node"""
         modification = {
             'type': 'llm_expansion',
             'config': candidate.config,
@@ -1292,7 +1284,7 @@ class LLMPredictor:
             'attempt': attempt,
             'timestamp': time.time()
         }
-        # print(f"\n=== 失败的 modification 内容 ===")
+        # print(f"\n=== Failed modification details ===")
         # print(json.dumps(modification, indent=2, default=str))
         # print("=" * 40)
         parent_node.record_modification(modification, success=False)

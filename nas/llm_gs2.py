@@ -1,15 +1,15 @@
-import openai  # 或其他 LLM API
+import openai  # or other LLM API
 import sys
 import json5
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
 import re
-sys.path.append(str(Path(__file__).resolve().parent.parent))  # 添加项目根目录到路径
-from utils import initialize_llm  # 修改导入路径
-# 从configs导入提示模板
+sys.path.append(str(Path(__file__).resolve().parent.parent))  # Add project root to the path
+from utils import initialize_llm  # Adjust import path
+# Import prompt templates from configs
 from configs import get_search_space, get_llm_config, get_tnas_search_space
-# 导入模型和约束验证相关模块
+# Import model and constraint validation modules
 from models.candidate_models import CandidateModel
 from constraints import validate_constraints, ConstraintValidator, MemoryEstimator
 from pareto_optimization import ParetoFront
@@ -25,7 +25,7 @@ llm_config = get_llm_config()
 # search_space = get_search_space()
 search_space = get_tnas_search_space()
 
-# 在文件开头添加
+# Configure logging at the top of the file
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -39,22 +39,22 @@ logger = logging.getLogger(__name__)
 
 class LLMGuidedSearcher:
     """
-    LLM引导的神经网络架构搜索器
+    LLM-guided neural architecture searcher.
     
-    参数:
-        llm_config: LLM配置字典
-        search_space: 搜索空间定义
+    Args:
+        llm_config: LLM configuration dictionary
+        search_space: Search space definition
     """
     # , 'MotionSense', 'w-HAR', 'WISDM', 'Harth', 'USCHAD', 'UTD-MHAD', 'DSADS'
     def __init__(self, llm_config, search_space, dataset_names=['har70plus', 'MotionSense']):
         self.llm = initialize_llm(llm_config)
         self.search_space = search_space
-        # 初始化Pareto前沿
+        # Initialize the Pareto front
         self.pareto_front = ParetoFront(constraints=search_space['constraints'])
-        self.retries = 3  # 重试次数
-        # 存储最近失败的候选架构
+        self.retries = 3  # Number of retries
+        # Store recently failed candidate architectures
         self.recent_failures: List[Tuple[Dict, str]] = []
-        # 初始化约束验证器
+        # Initialize the constraint validator
         self.validator = ConstraintValidator(search_space['constraints'])
 
         self.dataset_names = dataset_names
@@ -130,49 +130,51 @@ class LLMGuidedSearcher:
         
     def generate_candidate(self, dataset_name: str, feedback: Optional[str] = None) -> Optional[CandidateModel]:
         """
-        使用LLM生成候选架构，基于特定数据集的信息
-        参数:
-            dataset_name: 当前数据集的名称
-            feedback: 上一次的反馈信息
-        返回:
-            一个候选模型
+        Generate a candidate architecture using the LLM based on dataset information.
+        
+        Args:
+            dataset_name: Name of the current dataset
+            feedback: Feedback from the previous iteration
+        
+        Returns:
+            A candidate model
         """
         for attempt in range(self.retries):
-            include_failures = attempt > 0  # 只在重试时包含失败案例
-            # 构建提示词
+            include_failures = attempt > 0  # Only include failure cases when retrying
+            # Build the prompt
             print(f"include_failures: {include_failures}, attempt: {attempt + 1}")
 
             prompt = self._build_prompt(dataset_name, feedback, include_failures)
 
             try:
-                # 调用 LLM 生成响应
+                # Invoke the LLM to generate a response
                 response = self.llm.invoke(prompt).content
-                print(f"LLM原始响应:\n{response[50:]}\n{'-'*50}")
+                print(f"LLM raw response:\n{response[50:]}\n{'-'*50}")
                 
-                # 解析响应并验证约束
+                # Parse response and validate constraints
                 candidate = self._parse_response(response)
                 if candidate is None:
-                    print("⚠️ 生成的候选架构不符合约束条件")
+                    print("⚠️ Generated candidate does not meet the constraints")
                     continue
-                # 验证约束
+                # Validate constraints
                 is_valid, failure_reason, suggestions  = self._validate_candidate(candidate, dataset_name)
                 if is_valid:
                     return candidate
                 
-                # 记录失败案例
+                # Record the failure case
                 self._record_failure(candidate.config, failure_reason, suggestions)
                 print("\n----------------------------------------\n")
-                print(f"⚠️ 尝试 {attempt + 1} / {self.retries}: 生成的候选架构不符合约束条件: {failure_reason}")
-                print(f"优化建议:\n{suggestions}")
+                print(f"⚠️ Attempt {attempt + 1} / {self.retries}: generated candidate does not meet constraints: {failure_reason}")
+                print(f"Suggestions for improvement:\n{suggestions}")
 
             except Exception as e:
-                print(f"LLM调用失败: {str(e)}")
+                print(f"LLM call failed: {str(e)}")
 
-        print(f"❌ 经过 {self.retries} 次尝试仍未能生成有效架构")
+        print(f"❌ Failed to generate a valid architecture after {self.retries} attempts")
         return None
 
     def _validate_candidate(self, candidate: CandidateModel, dataset_name: str) -> Tuple[bool, str]:
-        """验证候选模型并返回所有失败原因"""
+        """Validate the candidate model and return any failure reasons"""
         violations = []
         suggestions = []
         
@@ -223,7 +225,7 @@ class LLMGuidedSearcher:
         
         # Check Peak Memory constraint
         peak_memory = candidate.measure_peak_memory(device='cuda', dataset_names=dataset_name)
-        max_peak_memory = float(self.search_space['constraints'].get('max_peak_memory', float('inf'))) / 1e6  # 默认无限制
+        max_peak_memory = float(self.search_space['constraints'].get('max_peak_memory', float('inf'))) / 1e6  # Default to unlimited
         peak_memory_status = f"Peak Memory: {peak_memory:.2f}MB"
         if peak_memory > max_peak_memory:
             peak_memory_status += f" (Exceeding the maximum value {max_peak_memory:.2f}MB)"
@@ -238,7 +240,7 @@ class LLMGuidedSearcher:
 
         # Check Latency constraint
         latency = candidate.measure_latency(device='cuda', dataset_names=dataset_name)
-        max_latency = float(self.search_space['constraints'].get('max_latency', float('inf')))  # 默认无限制
+        max_latency = float(self.search_space['constraints'].get('max_latency', float('inf')))  # Default to unlimited
         latency_status = f"Latency: {latency:.2f}ms"
         if latency > max_latency:
             latency_status += f" (Exceeding the maximum value {max_latency:.2f}ms)"
@@ -251,7 +253,7 @@ class LLMGuidedSearcher:
             latency_status += " (Compliant with constraints)"
 
         # Print all metrics
-        print("\n---- 约束验证结果 ----")
+        print("\n---- Constraint validation results ----")
         print(macs_status)
         print(sram_status)
         print(params_status)
@@ -269,43 +271,44 @@ class LLMGuidedSearcher:
 
 
     def _record_failure(self, config: Dict, reason: str, suggestions: Optional[str] = None):
-        """记录失败的候选架构"""
+        """Record failed candidate architectures"""
         failure_entry = {
             "config": config,
             "reason": reason,
             "suggestions": suggestions or "No specific suggestions"
         }
         self.recent_failures.append(failure_entry)
-        # 只保留最近的 self.retries 个失败案例
+        # Keep only the latest self.retries failure cases
         if len(self.recent_failures) > self.retries:
             self.recent_failures.pop(0)
     
     def _build_prompt(self, dataset_name: str, feedback: Optional[str], include_failures: bool) -> str:
         """
-        构建LLM提示，基于特定数据集的信息
-        参数:
-            dataset_name: 当前数据集的名称
-            feedback: 上一次的反馈信息
-            include_failures: 是否包含失败案例
+        Build the LLM prompt based on dataset-specific information.
+
+        Args:
+            dataset_name: Name of the current dataset
+            feedback: Feedback from the previous iteration
+            include_failures: Whether to include failure cases
         """
         dataset_info = self.dataset_info[dataset_name]
-        # 从Pareto前沿获取反馈(如果未提供)
+        # Get feedback from the Pareto front (if not provided)
         if feedback is None:
             feedback = self.pareto_front.get_feedback()
 
-        # 从搜索空间获取约束条件，并确保数值是 int/float
+        # Extract constraints from the search space and ensure numeric types
         constraints = {
-            'max_sram': float(self.search_space['constraints']['max_sram']) / 1024,  # 转换为KB
-            'min_macs': float(self.search_space['constraints']['min_macs']) / 1e6,   # 转换为M
-            'max_macs': float(self.search_space['constraints']['max_macs']) / 1e6,   # 转换为M
-            'max_params': float(self.search_space['constraints']['max_params']) / 1e6,  # 转换为M
-            'max_peak_memory': float(self.search_space['constraints']['max_peak_memory']) / 1e6,  # 转换为MB  默认200MB
+            'max_sram': float(self.search_space['constraints']['max_sram']) / 1024,  # Converted to KB
+            'min_macs': float(self.search_space['constraints']['min_macs']) / 1e6,   # Converted to M
+            'max_macs': float(self.search_space['constraints']['max_macs']) / 1e6,   # Converted to M
+            'max_params': float(self.search_space['constraints']['max_params']) / 1e6,  # Converted to M
+            'max_peak_memory': float(self.search_space['constraints']['max_peak_memory']) / 1e6,  # Converted to MB (default 200MB)
             'max_latency': float(self.search_space['constraints']['max_latency']) 
         }
 
         print(f"\nfeedback: {feedback}\n")
 
-        # 构建失败案例反馈部分
+        # Build the failure case feedback section
         failure_feedback = ""
         if include_failures and self.recent_failures:
             failure_feedback = "\n**Recent failed architecture cases, reasons and suggestions:**\n"
@@ -453,31 +456,31 @@ class LLMGuidedSearcher:
                 num_classes=dataset_info['num_classes'],
                 description=dataset_info['description']
             )
-        # 构建完整提示
-        # print(f"构建的提示:\n{search_prompt}...\n{'-'*50}")
+        # Construct the full prompt
+        # print(f"Constructed prompt:\n{search_prompt}...\n{'-'*50}")
        
         return search_prompt
     
     def _parse_response(self, response: str) -> Optional[CandidateModel]:
-        """解析LLM响应为候选模型"""
+        """Parse the LLM response into a candidate model"""
         try:
-            # 尝试解析JSON响应
+            # Try to parse the JSON response
             json_match = re.search(r'```json(.*?)```', response, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1).strip()
-                # print(f"提取的JSON字符串:\n{json_str}")
+                # print(f"Extracted JSON string:\n{json_str}")
                 config = json5.loads(json_str)
             else:
                 json_match = re.search(r'```(.*?)```', response, re.DOTALL)
-                # print(f"提取的JSON字符串:\n{json_str}")
+                # print(f"Extracted JSON string:\n{json_str}")
                 config = json5.loads(json_str)
-            # print(f"解析出的配置:\n{json.dumps(config, indent=2)}")
+            # print(f"Parsed configuration:\n{json.dumps(config, indent=2)}")
 
-            # 基本配置验证
+            # Basic configuration validation
             if not all(k in config for k in ['stages', 'constraints']):
-                raise ValueError("配置缺少必要字段(stages 或 constraints)")
+                raise ValueError("Config is missing required fields (stages or constraints)")
 
-            # 确保所有数值字段都是数字类型
+            # Ensure all numeric fields are actually numbers
             def convert_numbers(obj):
                 if isinstance(obj, dict):
                     return {k: convert_numbers(v) for k, v in obj.items()}
@@ -492,38 +495,38 @@ class LLMGuidedSearcher:
 
             config = convert_numbers(config)
             
-            # 创建候选模型实例
+            # Create the candidate model instance
             candidate = CandidateModel(config=config)
-            # 创建候选模型实例（不再验证约束）
-            return CandidateModel(config=config)
+            # Return the candidate model (constraints assumed already checked)
+            return candidate
 
             
         except json.JSONDecodeError:
-            print(f"无法解析LLM响应为JSON: {response}")
+            print(f"Failed to parse LLM response as JSON: {response}")
             return None
         except Exception as e:
-            print(f"配置解析失败: {str(e)}")
+            print(f"Config parsing failed: {str(e)}")
             return None
 
 
     def run_search(self, iterations: int = 100) -> Dict:
         """
-        运行完整的搜索流程
+        Run the full search workflow.
         
-        参数:
-            iterations: 搜索迭代次数
-        返回:
-            包含最佳模型和Pareto前沿的字典
+        Args:
+            iterations: Number of search iterations
+        Returns:
+            A dictionary containing the best models and Pareto front information
         """
         
-        # 获取正确的数据集信息
-        # input_shape = (1, dataset_info['channels'], dataset_info['time_steps'])  # 正确的输入尺寸
+        # Fetch the correct dataset information
+        # input_shape = (1, dataset_info['channels'], dataset_info['time_steps'])  # Correct input size
 
         dataloaders = get_multitask_dataloaders('/root/project1/data')
 
-        # 或者使用最大时间步长（确保模型能处理所有数据集）
+        # Alternatively, use the maximum time steps (ensure compatibility across datasets)
         # max_time_steps = max(info['time_steps'] for info in self.dataset_info.values())
-        # input_shape = (1, 6, max_time_steps)  # 6是所有数据集的通道数
+        # input_shape = (1, 6, max_time_steps)  # 6 is the number of channels for all datasets
 
         results = {
             'best_models': [],
@@ -532,135 +535,135 @@ class LLMGuidedSearcher:
 
         best_models = []
 
-        # 设置中国标准时间（UTC+8）
+        # Set China Standard Time (UTC+8)
         china_timezone = pytz.timezone("Asia/Shanghai")
-        # 确保主保存目录存在
+        # Ensure the base save directory exists
         base_save_dir = "/root/project1/weights/tinyml"
         os.makedirs(base_save_dir, exist_ok=True)
 
-         # 创建一个唯一的时间戳子文件夹
-        timestamp = datetime.now(china_timezone).strftime("%m-%d-%H-%M")  # 格式为 "月-日-时-分"
+         # Create a unique timestamped subfolder
+        timestamp = datetime.now(china_timezone).strftime("%m-%d-%H-%M")  # Format: "MM-DD-HH-MM"
         run_save_dir = os.path.join(base_save_dir, timestamp)
-        os.makedirs(run_save_dir, exist_ok=True)  # 确保子文件夹存在
+        os.makedirs(run_save_dir, exist_ok=True)  # Ensure subfolder exists
 
-        print(f"所有模型将保存到目录: {run_save_dir}")
+        print(f"All models will be saved to: {run_save_dir}")
         
-        # 初始化结果字典
+        # Initialize overall results dictionary
         overall_results = {}
 
-        # 遍历每个数据集
+        # Iterate through each dataset
         for dataset_name in self.dataset_names:
-            print(f"\n{'='*30} 开始搜索数据集: {dataset_name} {'='*30}")
+            print(f"\n{'='*30} Starting search for dataset: {dataset_name} {'='*30}")
 
-            # 重置 Pareto 前沿，确保每个任务从零开始
+            # Reset the Pareto front to ensure each task starts fresh
             self.pareto_front.reset()
 
-            # 初始化每个数据集的结果
+            # Initialize the results for this dataset
             dataset_results = {
                 'best_models': [],
                 'pareto_front': []
             }
 
-            # 为当前数据集创建独立的保存目录
+            # Create a dedicated save directory for the current dataset
             dataset_save_dir = os.path.join(run_save_dir, dataset_name)
             os.makedirs(dataset_save_dir, exist_ok=True)
 
-            # 获取当前数据集的数据加载器
+            # Get the dataloader for the current dataset
             dataloader = dataloaders[dataset_name]
-            # 为当前数据集运行 `iterations` 次搜索
+            # Run `iterations` search iterations for this dataset
 
-            input_shape = (1, self.dataset_info[dataset_name]['channels'], self.dataset_info[dataset_name]['time_steps'])  # 确保输入形状正确
+            input_shape = (1, self.dataset_info[dataset_name]['channels'], self.dataset_info[dataset_name]['time_steps'])  # Ensure input shape is correct
 
             for i in range(iterations):
-                logger.info(f"\n{'-'*30} 数据集 {dataset_name} - 迭代 {i+1}/{iterations} {'-'*30}")
+                logger.info(f"\n{'-'*30} Dataset {dataset_name} - iteration {i+1}/{iterations} {'-'*30}")
                 
-                # 生成候选架构
+                # Generate a candidate architecture
                 candidate = self.generate_candidate(dataset_name)
                 if candidate is None:
                     continue
                 
-                # 评估候选架构
+                # Evaluate the candidate architecture
                 try:
-                    # 构建模型
+                    # Build the model
                     model = candidate.build_model()
-                    print("✅ 模型构建成功")
-                    # 验证模型输出维度
+                    print("✅ Model built successfully")
+                    # Verify the model output dimension
                     if not hasattr(model, 'output_dim'):
                         raise AttributeError("Built model missing 'output_dim' attribute")
-                    print(f"模型输出维度: {model.output_dim}")
+                    print(f"Model output dimension: {model.output_dim}")
 
                     try:
                         from torchinfo import summary
                         summary(model, input_size=input_shape)
                     except ImportError:
-                        print("⚠️ 未安装torchinfo， 无法打印模型结构")
-                        print("模型结构:", model)
+                        print("⚠️ torchinfo is not installed; cannot print the model structure")
+                        print("Model structure:", model)
 
-                    # 训练并评估模型
+                    # Train and evaluate the model
                     # trainer = MultiTaskTrainer(model, dataloaders)
-                    # 创建训练器
+                    # Create a trainer
                     trainer = SingleTaskTrainer(model, dataloader)
 
-                    # 为每个候选模型生成唯一的保存路径
+                    # Generate a unique save path for each candidate model
                     save_path = os.path.join(dataset_save_dir, f"best_model_iter_{i+1}.pth")
 
-                    # 训练模型并保存最佳权重
-                    best_acc, best_val_metrics, history, best_state = trainer.train(epochs=10, save_path=save_path)  # 快速训练5个epoch
+                    # Train the model and save the best weights
+                    best_acc, best_val_metrics, history, best_state = trainer.train(epochs=10, save_path=save_path)  # Quick 5-epoch run
 
-                    # 使用最佳准确率作为候选模型的准确率
+                    # Use the best accuracy as the candidate's accuracy
                     candidate.accuracy = best_acc
-                    # candidate.val_accuracy = {k: v['accuracy'] / 100 for k, v in best_val_metrics.items()}  # 保存最佳验证准确率
-                    candidate.val_accuracy = best_val_metrics['accuracy'] / 100  # 保存最佳验证准确率
-                    candidate.metadata['best_model_path'] = save_path  # 保存最佳权重路径
-                    # 测量峰值内存（GPU）
+                    # candidate.val_accuracy = {k: v['accuracy'] / 100 for k, v in best_val_metrics.items()}  # Store best validation accuracy values
+                    candidate.val_accuracy = best_val_metrics['accuracy'] / 100  # Store the best validation accuracy
+                    candidate.metadata['best_model_path'] = save_path  # Save the best weights path
+                    # Measure peak memory (GPU)
                     peak_memory_mb = candidate.measure_peak_memory(device='cuda', dataset_names=dataset_name)
                     print(f"Peak Memory Usage: {peak_memory_mb:.2f} MB")
 
-                    # 测量推理时延（GPU）
+                    # Measure inference latency (GPU)
                     latency_ms = candidate.measure_latency(device='cuda', dataset_names=dataset_name)
                     print(f"⏱️ Inference Latency: {latency_ms:.2f} ms")
                     
-                    # 分析训练结果
-                    print("\n=== 训练结果 ===")
-                    # print(f"最佳验证准确率: {best_acc:.2%}")
-                    
+                    # Analyze training results
+                    print("\n=== Training results ===")
+                    # print(f"Best validation accuracy: {best_acc:.2%}")
+                   
                     for epoch, record in enumerate(history):
                         print(f"\nEpoch {epoch+1}:")
-                        print(f"训练准确率: {record['train']['accuracy']:.2f}%")
-                        print(f"验证准确率: {record['val']['accuracy']:.2f}%")
+                        print(f"Training accuracy: {record['train']['accuracy']:.2f}%")
+                        print(f"Validation accuracy: {record['val']['accuracy']:.2f}%")
 
-                    print("\n✅ 训练测试完成 ")
-            
+                    print("\n✅ Training complete")
 
-                    # 计算指标
+
+                    # Compute metrics
                     metrics = {
                         'macs': candidate.estimate_macs(),
                         'params': candidate.estimate_params(),
-                        # 这个地方绝对错误
+                        # This part is definitely wrong
                         'sram': MemoryEstimator.calc_model_sram(candidate),
-                        # 这里需要添加实际评估准确率的方法
+                        # Need to add an actual accuracy evaluation method here
                         'accuracy': best_acc,
                         'val_accuracy': candidate.val_accuracy,
-                        'latency': latency_ms,  # 新增latency指标
-                        'peak_memory': peak_memory_mb  # 新增峰值内存指标
+                        'latency': latency_ms,  # Added latency metric
+                        'peak_memory': peak_memory_mb  # Added peak memory metric
                     }
-                    # print(f"候选指标: {metrics}")
+                    # print(f"Candidate metrics: {metrics}")
 
-                    # 更新Pareto前沿
+                    # Update the Pareto front
                     if self.pareto_front.update(candidate, metrics):
-                        print("✅ 新候选加入Pareto前沿")
+                        print("✅ New candidate added to the Pareto front")
                     
-                    # 记录最佳模型
+                    # Record the best model
                     if self.pareto_front.is_best(candidate):
                         best_models.append(candidate)
-                        print("🏆 新的最佳模型!")
+                        print("🏆 New best model!")
                 except Exception as e:
-                    print(f"模型评估失败: {str(e)}")
+                    print(f"Model evaluation failed: {str(e)}")
                     continue
 
-            # # 打印 Pareto 前沿中的所有模型信息
+            # # Print information for all models in the Pareto front
             print("\n=== Pareto Front Summary ===")
-            pareto_info = []  # 用于保存Pareto前沿信息
+            pareto_info = []  # Used to store Pareto front information
             for i, candidate in enumerate(self.pareto_front.get_front(), 1):
                 model_info = {
                     "index": i,
@@ -669,7 +672,7 @@ class LLMGuidedSearcher:
                     "params": float(candidate.params),
                     "sram": float(candidate.sram) / 1e3,
                     "latency": float(candidate.latency),
-                    "peak_memory": float(candidate.peak_memory),  # 转换为KB
+                "peak_memory": float(candidate.peak_memory),  # Converted to KB
                     "val_accuracy": candidate.val_accuracy,
                     "best_model_path": candidate.metadata.get('best_model_path', 'N/A'),
                     "configuration": candidate.config
@@ -688,44 +691,44 @@ class LLMGuidedSearcher:
                 print(f"- Best Model Path: {candidate.metadata.get('best_model_path', 'N/A')}")
                 print(f"- Configuration: {json.dumps(candidate.config, indent=2)}")
 
-            # 保存Pareto前沿信息到JSON文件
+            # Save Pareto front information to a JSON file
             pareto_save_path = os.path.join(dataset_save_dir, "pareto_front.json")
             try:
                 with open(pareto_save_path, 'w', encoding='utf-8') as f:
                     json.dump(pareto_info, f, indent=2, ensure_ascii=False)
-                print(f"\n✅ Pareto 前沿信息已保存到: {pareto_save_path}")
+                print(f"\n✅ Pareto front information saved to: {pareto_save_path}")
             except Exception as e:
-                print(f"\n❌ 保存 Pareto 前沿信息失败: {str(e)}")
+                print(f"\n❌ Failed to save Pareto front information: {str(e)}")
 
-            # 将当前数据集的结果存储到整体结果中
+            # Store the current dataset's results into the overall results
             dataset_results['pareto_front'] = self.pareto_front.get_front()
             overall_results[dataset_name] = dataset_results
 
         return overall_results
 
 
-# 示例用法
+# Example usage
 if __name__ == "__main__":
     
-    # # 创建搜索器实例
+    # # Create the searcher instance
     # searcher = LLMGuidedSearcher(llm_config["llm"], search_space)
     
-    # # 运行搜索
+    # # Run the search
     # results = searcher.run_search(iterations=2)
 
-    # # 打印每个数据集的 Pareto 前沿模型数量
+    # # Print the Pareto front model count for each dataset
     # for dataset_name, dataset_results in results.items():
     #     pareto_count = len(dataset_results['pareto_front'])
-    #     print(f"数据集 {dataset_name} 的 Pareto 前沿模型数量: {pareto_count}")
+    #     print(f"Dataset {dataset_name} Pareto front model count: {pareto_count}")
 
 
 
 
     try:
-        # 修改配置为一个简单的模型（只有一个 stage）
+        # Modify the configuration to a simple model (single stage)
         simple_config = {
-            "input_channels": 6,  # har70plus 的输入通道数
-            "num_classes": 7,  # har70plus 的类别数
+            "input_channels": 6,  # Input channels for har70plus
+            "num_classes": 7,  # Number of classes for har70plus
             "stages": [
                 {
                     "blocks": [
@@ -740,7 +743,7 @@ if __name__ == "__main__":
                             "activation": "ReLU6"
                         }
                     ],
-                    "channels": 8  # stage 的输出通道数
+                "channels": 8  # Stage output channels
                 }
             ],
             "constraints": {
@@ -752,10 +755,10 @@ if __name__ == "__main__":
                 "max_latency": 100
             }
         }
-        # 配置 2 个 stage
+        # Configure 2 stages
         config_2_stages = {
-            "input_channels": 6,  # har70plus 的输入通道数
-            "num_classes": 7,  # har70plus 的类别数
+            "input_channels": 6,  # Input channels for har70plus
+            "num_classes": 7,  # Number of classes for har70plus
             "stages": [
                 {
                     "blocks": [
@@ -770,7 +773,7 @@ if __name__ == "__main__":
                             "activation": "ReLU6"
                         }
                     ],
-                    "channels": 8  # stage 的输出通道数
+                "channels": 8  # Stage output channels
                 }
             ],
             "constraints": {
@@ -783,10 +786,10 @@ if __name__ == "__main__":
             }
         }
 
-        # 配置 3 个 stage
+        # Configure 3 stages
         config_3_stages = {
-            "input_channels": 6,  # har70plus 的输入通道数
-            "num_classes": 7,  # har70plus 的类别数
+            "input_channels": 6,  # Input channels for har70plus
+            "num_classes": 7,  # Number of classes for har70plus
             "stages": [
                 {
                     "blocks": [
@@ -801,7 +804,7 @@ if __name__ == "__main__":
                             "activation": "ReLU6"
                         }
                     ],
-                    "channels": 8  # stage 的输出通道数
+                "channels": 8  # Stage output channels
                 }
             ],
             "constraints": {
@@ -814,77 +817,77 @@ if __name__ == "__main__":
             }
         }
    
-        # 测试性能函数（包括训练并计算准确率）
+        # Test function (including training and accuracy evaluation)
         def test_model_with_training(config, description, dataloader, base_save_dir, epochs=20):
             """
-            测试模型的性能，包括训练并计算准确率
-            参数:
-                config: 模型配置
-                description: 模型描述
-                dataloader: 数据加载器
-                save_dir: 保存权重的目录
-                epochs: 训练的epoch数
+            Test a model's performance, including training and accuracy evaluation.
+
+            Args:
+                config: Model configuration
+                description: Model description
+                dataloader: Data loader
+                base_save_dir: Directory to save weights
+                epochs: Number of training epochs
             """
-            print(f"\n=== 测试模型: {description} ===")
+            print(f"\n=== Testing model: {description} ===")
             candidate = CandidateModel(config=config)
 
-            # 打印模型配置
-            print("\n=== 模型配置 ===")
+            # Print the model configuration
+            print("\n=== Model configuration ===")
             print(json.dumps(config, indent=2))
 
-            # 构建模型
+            # Build the model
             model = candidate.build_model()
-            print("✅ 模型构建成功")
+            print("✅ Model built successfully")
 
-            # 验证模型输出维度
+            # Verify model output dimensions
             if not hasattr(model, 'output_dim'):
-                raise AttributeError("构建的模型缺少 'output_dim' 属性")
+                raise AttributeError("Built model missing 'output_dim' attribute")
 
-            # 打印模型结构
+            # Print the model structure
             try:
                 from torchinfo import summary
-                summary(model, input_size=(1, config['input_channels'], 500))  # 假设输入时间步长为500
+                summary(model, input_size=(1, config['input_channels'], 500))  # Assume 500 input time steps
             except ImportError:
-                print("⚠️ 未安装torchinfo，无法打印模型结构")
-                print("模型结构:", model)
+                print("⚠️ torchinfo is not installed; cannot print the model structure")
+                print("Model structure:", model)
 
-            # 创建训练器
+            # Create the trainer
             trainer = SingleTaskTrainer(model, dataloader)
-            # 为当前模型创建唯一的保存路径
+            # Create a unique save directory for this model
             model_save_dir = os.path.join(base_save_dir, description.replace(" ", "_"))
-            os.makedirs(model_save_dir, exist_ok=True)  # 确保保存目录存在
-            # 保存路径
+            os.makedirs(model_save_dir, exist_ok=True)  # Ensure the directory exists
+            # Define save paths
             model_save_path = os.path.join(model_save_dir, "best_model.pth")
             config_save_path = os.path.join(model_save_dir, "model.json")
 
-            
-            # 训练模型
-            print(f"开始训练模型: {description}")
+            # Train the model
+            print(f"Starting training for model: {description}")
             best_acc, best_val_metrics, history, best_state = trainer.train(epochs=epochs, save_path=model_save_path)
 
-            # 使用最佳准确率作为候选模型的准确率
+            # Use the best accuracy as the candidate score
             candidate.accuracy = best_acc
-            candidate.val_accuracy = best_val_metrics['accuracy'] / 100  # 保存最佳验证准确率
+            candidate.val_accuracy = best_val_metrics['accuracy'] / 100  # Store validation accuracy
 
-            # 测试延迟
+            # Measure latency
             latency_ms = candidate.measure_latency(device='cuda', dataset_names='har70plus')
-            print(f"⏱️ 推理延迟: {latency_ms:.2f} ms")
+            print(f"⏱️ Latency: {latency_ms:.2f} ms")
 
-            # 测试峰值内存
+            # Measure peak memory
             peak_memory_mb = candidate.measure_peak_memory(device='cuda', dataset_names='har70plus')
-            print(f"峰值内存使用: {peak_memory_mb:.2f} MB")
+            print(f"Peak memory usage: {peak_memory_mb:.2f} MB")
 
-            # 打印训练结果
-            print("\n=== 训练结果 ===")
-            print(f"最佳验证准确率: {best_acc:.2%}")
+            # Print training results
+            print("\n=== Training results ===")
+            print(f"Best validation accuracy: {best_acc:.2%}")
             for epoch, record in enumerate(history):
                 print(f"\nEpoch {epoch+1}:")
-                print(f"训练准确率: {record['train']['accuracy']:.2f}%")
-                print(f"验证准确率: {record['val']['accuracy']:.2f}%")
+                print(f"Training accuracy: {record['train']['accuracy']:.2f}%")
+                print(f"Validation accuracy: {record['val']['accuracy']:.2f}%")
 
-            print("\n✅ 模型测试完成")
+            print("\n✅ Model testing complete")
 
-            # 保存模型架构参数到 JSON 文件（增加 latency 和 peak_memory 信息）
+            # Save model metadata to JSON (including latency and peak memory)
             model_data = {
                 "config": config,
                 "latency": latency_ms,
@@ -896,11 +899,11 @@ if __name__ == "__main__":
             try:
                 with open(config_save_path, "w", encoding="utf-8") as f:
                     json.dump(model_data, f, indent=2, ensure_ascii=False)
-                print(f"✅ 模型架构参数已保存到: {config_save_path}")
+                print(f"✅ Model config saved to: {config_save_path}")
             except Exception as e:
-                print(f"❌ 保存模型架构参数失败: {str(e)}")
+                print(f"❌ Failed to save model configuration: {str(e)}")
 
-            # 返回候选模型的性能指标
+            # Return performance metrics for the candidate
             return {
                 "description": description,
                 "accuracy": best_acc,
@@ -910,65 +913,65 @@ if __name__ == "__main__":
                 "config": config
             }
 
-        # 加载数据集
+        # Load datasets
         dataloaders = get_multitask_dataloaders('/root/project1/data')
-        dataloader = dataloaders['har70plus']  # 使用 har70plus 数据集
+        dataloader = dataloaders['har70plus']  # Use the har70plus dataset
 
-        # 设置保存目录
+        # Set the save directory
         save_dir = "/root/project1/weights/tinyml/test_models"
         os.makedirs(save_dir, exist_ok=True)
-        # 设置中国标准时间（UTC+8）
+        # Set China Standard Time (UTC+8)
         china_timezone = pytz.timezone("Asia/Shanghai")
-        timestamp = datetime.now(china_timezone).strftime("%m-%d-%H-%M")  # 格式为 "月-日-时-分"
+        timestamp = datetime.now(china_timezone).strftime("%m-%d-%H-%M")  # Format: "MM-DD-HH-MM"
         base_save_dir = os.path.join(save_dir, timestamp)
-        os.makedirs(base_save_dir, exist_ok=True)  # 确保保存目录存在
-        # 测试模型
+        os.makedirs(base_save_dir, exist_ok=True)  # Ensure the directory exists
+        # Evaluate models
         results = []
         results.append(test_model_with_training(simple_config, "(2)exp4stride2", dataloader, base_save_dir, epochs=20))
         results.append(test_model_with_training(config_2_stages, "(2)exp4stride3", dataloader, base_save_dir, epochs=20))
         results.append(test_model_with_training(config_3_stages, "(2)exp4stride4", dataloader, base_save_dir, epochs=20))
 
-        # 打印结果
-        print("\n=== 测试结果 ===")
+        # Print results
+        print("\n=== Test results ===")
         for result in results:
-            print(f"\n模型描述: {result['description']}")
-            print(f"准确率: {result['accuracy']:.2%}")
-            print(f"验证准确率: {result['val_accuracy']:.2%}")
-            print(f"推理延迟: {result['latency']:.2f} ms")
-            print(f"峰值内存使用: {result['peak_memory']:.2f} MB")
-            print(f"模型配置: {json.dumps(result['config'], indent=2)}")
+            print(f"\nModel description: {result['description']}")
+            print(f"Accuracy: {result['accuracy']:.2%}")
+            print(f"Validation accuracy: {result['val_accuracy']:.2%}")
+            print(f"Inference latency: {result['latency']:.2f} ms")
+            print(f"Peak memory usage: {result['peak_memory']:.2f} MB")
+            print(f"Configuration: {json.dumps(result['config'], indent=2)}")
 
         
         
         
-        # 测试性能函数
+        # Test performance helper
         def test_model(config, description):
-            print(f"\n=== 测试模型: {description} ===")
+            print(f"\n=== Testing model: {description} ===")
             candidate = CandidateModel(config=config)
 
-            # 打印模型配置
-            print("\n=== 模型配置 ===")
+            # Print the model configuration
+            print("\n=== Model configuration ===")
             print(json.dumps(config, indent=2))
 
-            # 测试延迟
+            # Measure latency
             latency_ms = candidate.measure_latency(device='cuda', dataset_names='har70plus')
-            print(f"⏱️ 推理延迟: {latency_ms:.2f} ms")
+            print(f"⏱️ Latency: {latency_ms:.2f} ms")
 
-            # 测试峰值内存
+            # Measure peak memory
             peak_memory_mb = candidate.measure_peak_memory(device='cuda', dataset_names='har70plus')
-            print(f"峰值内存使用: {peak_memory_mb:.2f} MB")
+            print(f"Peak memory usage: {peak_memory_mb:.2f} MB")
 
 
 
-        # # 测试 1 个 stage 的模型
-        # test_model(simple_config, "1 个 stage")
-        # # 测试 2 个 stage 的模型
-        # test_model(config_2_stages, "2 个 stage")
+        # # Test model with 1 stage
+        # test_model(simple_config, "1 stage")
+        # # Test model with 2 stages
+        # test_model(config_2_stages, "2 stage")
 
-        # # 测试 3 个 stage 的模型
-        # test_model(config_3_stages, "3 个 stage")
+        # # Test model with 3 stages
+        # test_model(config_3_stages, "3 stage")
 
 
     except Exception as e:
-        print(f"❌ 测试失败: {str(e)}")
+        print(f"❌ Testing failed: {str(e)}")
         

@@ -1,22 +1,22 @@
 
-=== 最终测试结果 ===
-成功测试: 296 个模型
-失败测试: 11 个模型
-GPU使用统计: {1: 81, 2: 73, 3: 69, 0: 73}
+=== Final Test Results ===
+Successfully Tested: 296 Models
+Failed Tests: 11 Models
+GPU Usage Statistics: {1: 81, 2: 73, 3: 69, 0: 73}
 
-📈 相关系数分析:
-Proxy Score 和准确率的相关系数: -0.0200
-Kendall Tau 排序一致性: 0.0106 (p=0.7860)
-Spearman 秩相关系数: 0.0153 (p=0.7929)
+📈 Correlation Coefficient Analysis:
+Correlation Coefficient between Proxy Score and Accuracy: -0.0200
+Kendall Tau Rank Consistency: 0.0106 (p=0.7860)
+Spearman Rank Correlation Coefficient: 0.0153 (p=0.7929)
 
-🎯 Top-K 命中率分析:
-  Top-1 命中率: 0.000 (0/1)
-  Top-3 命中率: 0.000 (0/3)
-  Top-5 命中率: 0.000 (0/5)
-  Top-10 命中率: 0.000 (0/10)
+🎯 Top-K Hit Rate Analysis:
+  Top-1 Hit Rate: 0.000 (0/1)
+  Top-3 Hit Rate: 0.000 (0/3)
+  Top-5 Hit Rate: 0.000 (0/5)
+  Top-10 Hit Rate: 0.000 (0/10)
 
-🏆 前10%模型分析 (n=29):
-按Proxy Score排名前10%的模型:
+🏆 Top 10% Model Analysis (n=29):
+Models Ranked in Top 10% by Proxy Score:
   1. Model_321_S1MBConvC16_S2MBConvC16 - Proxy: 0.6927, Acc: 62.33%
   2. Model_144_S1DpConvC8_S2DWSepConvC8_S2SE0.25 - Proxy: 0.6754, Acc: 53.49%
   3. Model_307_S1SeSepConvC8_S2DpConvC16 - Proxy: 0.6578, Acc: 58.14%
@@ -47,7 +47,7 @@ Spearman 秩相关系数: 0.0153 (p=0.7929)
   28. Model_295_S1MBConvC16_S2MBConvC16 - Proxy: 0.6261, Acc: 64.19%
   29. Model_007_S1_DWSepConv_C24 - Proxy: 0.6253, Acc: 56.28%
 
-按真实准确率排名前10%的模型:
+Models Ranked in Top 10% by True Accuracy:
   1. Model_226_S1DWSepConvC24_S2MBConvC24 - Acc: 77.67%, Proxy: 0.6198
   2. Model_311_S1SeSepConvC24_S2SeSepConvC24 - Acc: 77.21%, Proxy: 0.5411
   3. Model_168_S1DpConvC24_S2MBConvC24 - Acc: 77.21%, Proxy: 0.5807
@@ -78,7 +78,7 @@ Spearman 秩相关系数: 0.0153 (p=0.7929)
   28. Model_160_S1DpConvC24_S2MBConvC24 - Acc: 72.09%, Proxy: 0.5436
   29. Model_218_S1DWSepConvC24_S2DWSepConvC24 - Acc: 71.63%, Proxy: 0.6066
 
-🔍 各代理指标的排序一致性:
+🔍 Rank Consistency of Each Proxy Metric:
   - grad_norm: Pearson=0.2736, Kendall Tau=-0.0196
   - grasp: Pearson=-0.0331, Kendall Tau=0.1295
   - zen: Pearson=-0.0595, Kendall Tau=-0.0016

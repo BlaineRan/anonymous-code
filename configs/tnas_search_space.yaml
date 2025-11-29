@@ -10,7 +10,7 @@ search_space:
   has_se: [True, False]
   se_ratios: [0, 0.25, 0.5]
   blocks_per_stage: [1, 2]
-  quantization_modes: ["none", "static", "qat"]  # 新增量化选项
+  quantization_modes: ["none", "static", "qat"]  # Additional quantization options
   
 constraints:
   max_macs: 200e6
@@ -18,4 +18,4 @@ constraints:
   max_sram: 2000e3
   max_params: 5e6
   max_peak_memory: 20e6
-  max_latency: 5000  # 单位为毫秒
+  max_latency: 5000  # In milliseconds

@@ -85,7 +85,7 @@ class LLMGuidedSearcher:
                 if is_valid:
                     return candidate
             except Exception as e:
-                print(f"LLM调用失败: {str(e)}")
+                print(f"LLM call failed: {str(e)}")
         return None
 
     def _validate_candidate(self, candidate: CandidateModel, dataset_name: str) -> Tuple[bool, str, str]:
@@ -137,7 +137,7 @@ class LLMGuidedSearcher:
                 json_match = re.search(r'```(.*?)```', response, re.DOTALL)
                 json_str = json_match.group(1).strip()
             config = json5.loads(json_str)
-            if not all(k in config for k in ['stages', 'constraints']): raise ValueError("配置缺少必要字段")
+            if not all(k in config for k in ['stages', 'constraints']): raise ValueError("Config is missing required fields (stages or constraints)")
             def convert_numbers(obj):
                 if isinstance(obj, dict): return {k: convert_numbers(v) for k, v in obj.items()}
                 elif isinstance(obj, list): return [convert_numbers(v) for v in obj]
@@ -148,11 +148,11 @@ class LLMGuidedSearcher:
             config = convert_numbers(config)
             return CandidateModel(config=config)
         except Exception as e:
-            print(f"配置解析失败: {str(e)}")
+            print(f"Config parsing failed: {str(e)}")
             return None
 
 def fuse_model_modules(model):
-    print("⚙️ 开始算子融合...")
+    print("⚙️ Starting operator fusion...")
     model.eval()
     for module in model.modules():
         if isinstance(module, MBConvBlock):
@@ -167,11 +167,11 @@ def fuse_model_modules(model):
                 torch.quantization.fuse_modules(module.dw_conv, ['0', '1'], inplace=True)
             if hasattr(module, 'pw_conv'):
                 torch.quantization.fuse_modules(module.pw_conv, ['0', '1'], inplace=True)
-    print("✅ 算子融合完成。")
+    print("✅ Operator fusion complete.")
 
 
 def set_quantization_seed(seed=42):
-    """为量化过程设置固定种子"""
+    """Set a fixed seed for the quantization process"""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -180,37 +180,37 @@ def set_quantization_seed(seed=42):
         torch.cuda.manual_seed_all(seed)
 
 def test_model_with_training(config, description, dataloader, base_save_dir, epochs=1, quant_mode=None):
-    print(f"\n=== 测试模型: {description} | 量化模式: {quant_mode or '无'} ===")
+    print(f"\n=== Testing model: {description} | Quantization mode: {quant_mode or 'none'} ===")
     candidate = CandidateModel(config=config)
-    print("\n=== 模型配置 ===")
+    print("\n=== Model configuration ===")
     print(json.dumps(config, indent=2))
     model = candidate.build_model()
     
     try:
         from torchinfo import summary
-        print("\n--- 浮点模型结构 ---")
+        print("\n--- Floating-point model structure ---")
         summary(model, input_size=(64, config['input_channels'], 250))
     except Exception as e:
-        print(f"⚠️ torchinfo summary 失败: {e}")
-        print("脚本将继续执行...")
+        print(f"⚠️ torchinfo summary failed: {e}")
+        print("Script will continue...")
 
     device = torch.device("cuda")
-    print(f"在 {device} 上估算内存使用...")
+    print(f"Estimating memory usage on {device}...")
     memory_usage = calculate_memory_usage(model, input_size=(64, config['input_channels'], 250), device=device)
     activation_memory_mb = memory_usage['activation_memory_MB']
     parameter_memory_mb = memory_usage['parameter_memory_MB']
     peak_memory_mb = memory_usage['total_memory_MB']
-    print(f"激活内存: {activation_memory_mb:.2f} MB")
-    print(f"参数内存: {parameter_memory_mb:.2f} MB")
-    print(f"峰值内存估算: {peak_memory_mb:.2f} MB")
+    print(f"Activation memory: {activation_memory_mb:.2f} MB")
+    print(f"Parameter memory: {parameter_memory_mb:.2f} MB")
+    print(f"Estimated peak memory: {peak_memory_mb:.2f} MB")
 
     if quant_mode == 'qat':
         model.train()
         model.qconfig = quantization.get_default_qat_qconfig('fbgemm')
         quantization.prepare_qat(model, inplace=True)
-        print("✅ QAT模型准备完成。")
+        print("✅ QAT model ready.")
 
-    print("✅ 模型构建成功")
+    print("✅ Model built successfully")
     
     trainer = SingleTaskTrainer(model, dataloader)
     model_save_dir = os.path.join(base_save_dir, f"{description.replace(' ', '_')}_{quant_mode or 'no_quant'}")
@@ -218,20 +218,20 @@ def test_model_with_training(config, description, dataloader, base_save_dir, epo
     model_save_path = os.path.join(model_save_dir, "best_model.pth")
     config_save_path = os.path.join(model_save_dir, "model.json")
     
-    print(f"开始训练模型: {description}")
+    print(f"Starting training for model: {description}")
     best_acc, best_val_metrics, history, best_state = trainer.train(epochs=epochs, save_path=model_save_path)
     
 
     quantized_model = None
     if quant_mode in ['static', 'dynamic', 'qat']:
-        print(f"加载训练后的权重用于量化...")
+        print(f"Loading trained weights for quantization...")
         if quant_mode == 'qat':
             trained_model = model
         else:
             trained_model = candidate.build_model()
         
         if best_state is None:
-            print("⚠️ 训练未产生有效权重，无法进行量化。跳过后续步骤。")
+            print("⚠️ Training did not produce valid weights; skipping quantization.")
             quantized_model = trained_model
         else:
             fixed_state_dict = {}
@@ -242,7 +242,7 @@ def test_model_with_training(config, description, dataloader, base_save_dir, epo
                 else:
                     fixed_state_dict[k] = v
             trained_model.load_state_dict(fixed_state_dict, strict=False)
-            print(f"加载字典成功。")
+            print("Dictionary loaded successfully.")
     else:
         trained_model = candidate.build_model()
         if best_state is not None:
@@ -250,42 +250,42 @@ def test_model_with_training(config, description, dataloader, base_save_dir, epo
         
 
     if quant_mode == 'dynamic' and best_state is not None:
-        debug_quantization_detailed(trained_model, "训练后模型")
+        debug_quantization_detailed(trained_model, "Post-training model")
         
         trained_model.to('cpu').eval()
         
-        # 量化卷积层和线性层 
+        # Quantize convolutional and linear layers 
         quantized_model = quantization.quantize_dynamic(
             trained_model, 
-            {torch.nn.Conv1d, torch.nn.Linear},  # 🔑 添加Conv1d
+            {torch.nn.Conv1d, torch.nn.Linear},  # 🔑 Add Conv1d
             dtype=torch.qint8
         )
-        print("✅ 动态量化完成： 量化了 Conv1d 和 Linear 层")
-        debug_quantization_detailed(quantized_model, "量化后模型")
+        print("✅ Dynamic quantization complete: quantized Conv1d and Linear layers")
+        debug_quantization_detailed(quantized_model, "Quantized model")
     elif quant_mode == 'static' and best_state is not None:
 
-        # 打印所有可用选项 (可选)
+        # Print available options (optional)
         # print_available_quantization_options()
 
-        # 选择要使用的配置
+        # Choose the quantization option to use
         available_options = [
-            'int8_default',         # 默认INT8
-            'int8_per_channel',     # 逐通道INT8 (推荐)
-            'int8_reduce_range',    # 保守INT8
-            'int8_asymmetric',      # 非对称INT8
-            'int8_histogram',       # 直方图校准
-            'int8_mobile',          # 移动端优化
-            'int16',     # INT16激活 ⭐新增⭐
-            'int16_weight',         # INT16权重 ⭐新增⭐
-            'int16_full',          # INT16全精度 ⭐新增⭐
+            'int8_default',         # Default INT8
+            'int8_per_channel',     # Per-channel INT8 (recommended)
+            'int8_reduce_range',    # Reduced-range INT8
+            'int8_asymmetric',      # Asymmetric INT8
+            'int8_histogram',       # Histogram calibration
+            'int8_mobile',          # Mobile optimization
+            'int16',     # INT16 activation ⭐new⭐
+            'int16_weight',         # INT16 weights ⭐new⭐
+            'int16_full',          # INT16 full precision ⭐new⭐
         ]
 
-        # 选择配置 (你可以修改这里)
-        selected_option = 'int16'  # 或者选择 int16_activation
+        # Select the configuration (modifiable)
+        selected_option = 'int16'  # Or choose int16_activation
         quant_config = get_quantization_option(selected_option)
-        print(f"📋 选择量化配置: {quant_config['description']}")
-        print(f"   预期内存节省: {quant_config['memory_saving']}")
-        print(f"   预期精度损失: {quant_config['precision_loss']}")
+        print(f"📋 Selected quantization config: {quant_config['description']}")
+        print(f"   Expected memory saving: {quant_config['memory_saving']}")
+        print(f"   Expected accuracy drop: {quant_config['precision_loss']}")
 
         quantized_model = apply_configurable_static_quantization(
             trained_model,
@@ -296,9 +296,9 @@ def test_model_with_training(config, description, dataloader, base_save_dir, epo
 
         # torch.backends.quantized.engine = 'fbgemm'
         # trained_model.to('cpu').eval()
-        # # print(f"融合前的结构: {trained_model}")  # 检查融合前的结构
+        # # print(f"Structure before fusion: {trained_model}")  # Inspect pre-fusion structure
         # fuse_model_modules(trained_model)
-        # # print(f"融合后的结构: {trained_model}")  # 检查融合后的结构
+        # # print(f"Structure after fusion: {trained_model}")  # Inspect post-fusion structure
         # trained_model.qconfig = quantization.get_default_qconfig('fbgemm')
         # quantization.prepare(trained_model, inplace=True)
         # calibration_loader = create_calibration_loader(dataloader['train'], num_batches=10)
@@ -312,42 +312,42 @@ def test_model_with_training(config, description, dataloader, base_save_dir, epo
         qat_model = trained_model
         qat_model.to('cpu').eval()
         fuse_model_modules(qat_model)
-        print("⚙️ 转换最终QAT模型...")
+        print("⚙️ Converting final QAT model...")
         quantized_model = quantization.convert(qat_model, inplace=True)
-        print("✅ QAT模型转换完成。")
+        print("✅ QAT model conversion complete.")
     else:
         quantized_model = trained_model
 
     if quant_mode is not None:
-        # 测试量化模型的准确率
-        print(f"\n=== 量化模型测试评估 ===")
-        # 设置种子
+        # Evaluate the quantized model
+        print(f"\n=== Quantized model testing ===")
+        # Set the seed
         seed = 42
         set_quantization_seed(seed)
         quantized_model.eval()
         correct = 0
         total = 0
         
-        # 创建任务头并加载权重
+        # Create the task head and load weights
         task_head = nn.Linear(model.output_dim, len(dataloader['test'].dataset.classes)).to('cpu')
         if best_state is not None and 'head' in best_state:
             task_head.load_state_dict(best_state['head'])
-        print(f"任务头已经创建。")
-        # 测试量化模型
+        print("Task head created.")
+        # Test the quantized model
         with torch.no_grad():
             print(f"torch.nn")
-            for inputs, labels in tqdm(dataloader['test'], desc="测试量化模型"):
+            for inputs, labels in tqdm(dataloader['test'], desc="Testing quantized model"):
                 inputs = inputs.to('cpu')
                 labels = labels.to('cpu')
-                # 获取特征并检查
+                # Retrieve features and verify
                 features = quantized_model(inputs)
                 if not isinstance(features, torch.Tensor):
-                    features = features.dequantize()  # 如果是量化张量，反量化
+                    features = features.dequantize()  # Dequantize if tensor was quantized
                 
-                # 检查任务头输入维度
+                # Check the task head input dimension
                 if features.shape[-1] != task_head.in_features:
                     raise ValueError(
-                        f"任务头输入维度不匹配: 模型输出 {features.shape[-1]} != 任务头输入 {task_head.in_features}"
+                        f"Task head input dimension mismatch: model output {features.shape[-1]} != task head input {task_head.in_features}"
                     )
                 
                 outputs = task_head(features)
@@ -356,22 +356,22 @@ def test_model_with_training(config, description, dataloader, base_save_dir, epo
                 correct += predicted.eq(labels).sum().item()
         
         quant_accuracy = 100. * correct / total
-        print(f"量化模型测试准确率: {quant_accuracy:.2f}%")
+        print(f"Quantized model test accuracy: {quant_accuracy:.2f}%")
         
         if best_val_metrics is not None:
             original_accuracy = best_val_metrics['accuracy']
             accuracy_drop = original_accuracy - quant_accuracy
-            print(f"原始模型验证准确率: {original_accuracy:.2f}%")
-            print(f"量化精度下降: {accuracy_drop:.2f}% ({accuracy_drop/original_accuracy*100:.2f}%)")
+            print(f"Original model validation accuracy: {original_accuracy:.2f}%")
+            print(f"Quantized accuracy drop: {accuracy_drop:.2f}% ({accuracy_drop/original_accuracy*100:.2f}%)")
 
     # if quant_mode is not None:
-    print(f"\n最终模型性能评估...")
+    print(f"\nFinal model performance evaluation...")
     quantized_model.to('cpu').eval()
     
     device = torch.device("cpu")
     dummy_input = torch.randn(64, config['input_channels'], 250, device=device)
 
-    print(f"测量最终模型在 {device} 上的推理延迟...")
+    print(f"Measuring final model latency on {device}...")
     repetitions = 100
     timings = []
     with torch.no_grad():
@@ -381,32 +381,32 @@ def test_model_with_training(config, description, dataloader, base_save_dir, epo
             end_time = time.time()
             if i >= 10: timings.append((end_time - start_time) * 1000)
     latency_ms = sum(timings) / len(timings) if timings else 0
-    print(f"⏱️ 推理延迟: {latency_ms:.2f} ms")
+    print(f"⏱️ Inference latency: {latency_ms:.2f} ms")
 
-    print(f"在 {device} 上估算内存使用...")
+    print(f"Estimating memory usage on {device}...")
     memory_usage = calculate_memory_usage(quantized_model, input_size=(64, config['input_channels'], 250), device=device)
     activation_memory_mb = memory_usage['activation_memory_MB']
     parameter_memory_mb = memory_usage['parameter_memory_MB']
     peak_memory_mb = memory_usage['total_memory_MB']
-    print(f"激活内存: {activation_memory_mb:.2f} MB")
-    print(f"参数内存: {parameter_memory_mb:.2f} MB")
-    print(f"峰值内存估算: {peak_memory_mb:.2f} MB")
+    print(f"Activation memory: {activation_memory_mb:.2f} MB")
+    print(f"Parameter memory: {parameter_memory_mb:.2f} MB")
+    print(f"Estimated peak memory: {peak_memory_mb:.2f} MB")
     # else:
     #     latency_ms = candidate.measure_latency(dataset_names='Mhealth')
 
     if quant_mode is None:
-        print("\n=== 训练结果 ===")
+        print("\n=== Training results ===")
         if best_state is not None:
-            print(f"最佳验证准确率: {best_val_metrics['accuracy']:.2f}%")
+            print(f"Best validation accuracy: {best_val_metrics['accuracy']:.2f}%")
             if history:
                 for epoch, record in enumerate(history):
                     print(f"\nEpoch {epoch+1}:")
-                    print(f"训练准确率: {record['train']['accuracy']:.2f}%")
-                    print(f"验证准确率: {record['val']['accuracy']:.2f}%")
+                    print(f"Training accuracy: {record['train']['accuracy']:.2f}%")
+                    print(f"Validation accuracy: {record['val']['accuracy']:.2f}%")
         else:
-            print("最佳验证准确率: 0.00%")
+            print("Best validation accuracy: 0.00%")
 
-    print("\n✅ 模型测试完成")
+    print("\n✅ Model testing complete")
 
     val_accuracy = quant_accuracy if quant_mode is not None else best_val_metrics['accuracy']
     val_accuracy = val_accuracy / 100
@@ -426,15 +426,15 @@ def test_model_with_training(config, description, dataloader, base_save_dir, epo
     try:
         with open(config_save_path, "w", encoding="utf-8") as f:
             json.dump(model_data, f, indent=2, ensure_ascii=False)
-        print(f"✅ 模型架构参数已保存到: {config_save_path}")
+        print(f"✅ Model config saved to: {config_save_path}")
     except Exception as e:
-        print(f"❌ 保存模型架构参数失败: {str(e)}")
+        print(f"❌ Failed to save model configuration: {str(e)}")
 
     return model_data
 
-def debug_quantization_detailed(model, model_name="模型"):
-    """详细调试量化状态"""
-    print(f"\n=== {model_name} 量化状态详细分析 ===")
+def debug_quantization_detailed(model, model_name="model"):
+    """Detailed debugging of quantization status"""
+    print(f"\n=== {model_name} quantization status analysis ===")
     
     total_params = 0
     quantized_params = 0
@@ -443,22 +443,22 @@ def debug_quantization_detailed(model, model_name="模型"):
         param_size_mb = param.numel() * param.element_size() / (1024**2)
         total_params += param.numel()
         
-        print(f"参数: {name}")
-        print(f"  形状: {param.shape}")
-        print(f"  数据类型: {param.dtype}")
-        print(f"  元素大小: {param.element_size()} bytes")
-        print(f"  内存大小: {param_size_mb:.4f} MB")
+        print(f"Parameter: {name}")
+        print(f"  Shape: {param.shape}")
+        print(f"  Dtype: {param.dtype}")
+        print(f"  Element size: {param.element_size()} bytes")
+        print(f"  Memory size: {param_size_mb:.4f} MB")
         
         if 'qint' in str(param.dtype):
             quantized_params += param.numel()
-            print(f"  ✅ 已量化")
+            print(f"  ✅ Quantized")
         else:
-            print(f"  ❌ 未量化 (仍然是FP32)")
+            print(f"  ❌ Not quantized (still FP32)")
         print()
     
-    print(f"总参数数: {total_params:,}")
-    print(f"量化参数数: {quantized_params:,}")
-    print(f"量化比例: {quantized_params/total_params*100:.1f}%")
+    print(f"Total parameters: {total_params:,}")
+    print(f"Quantized parameters: {quantized_params:,}")
+    print(f"Quantization ratio: {quantized_params/total_params*100:.1f}%")
     
     return quantized_params > 0
 
@@ -494,15 +494,15 @@ if __name__ == "__main__":
         for mode in quant_modes:
             results.append(test_model_with_training(simple_config, "3stage_MMAct", dataloader, base_save_dir, epochs=3, quant_mode=mode))
         
-        print("\n=== 测试结果 ===")
+        print("\n=== Test results ===")
         for result in results:
-            print(f"\n模型描述: {result['description']}")
-            print(f"准确率: {result['accuracy']:.2f}%")
-            print(f"验证准确率: {result['val_accuracy'] * 100:.2f}%")
-            print(f"推理延迟: {result['latency']:.2f} ms")
-            print(f"激活内存: {result['activation_memory']:.2f} MB")
-            print(f"参数内存: {result['parameter_memory']:.2f} MB")
-            print(f"峰值内存估算: {result['peak_memory']:.2f} MB")
-            print(f"模型配置: {json.dumps(result['config'], indent=2)}")
+            print(f"\nModel description: {result['description']}")
+            print(f"Accuracy: {result['accuracy']:.2f}%")
+            print(f"Validation accuracy: {result['val_accuracy'] * 100:.2f}%")
+            print(f"Inference latency: {result['latency']:.2f} ms")
+            print(f"Activation memory: {result['activation_memory']:.2f} MB")
+            print(f"Parameter memory: {result['parameter_memory']:.2f} MB")
+            print(f"Estimated peak memory: {result['peak_memory']:.2f} MB")
+            print(f"Configuration: {json.dumps(result['config'], indent=2)}")
     except Exception as e:
-        print(f"❌ 测试失败: {str(e)}")
+        print(f"❌ Testing failed: {str(e)}")

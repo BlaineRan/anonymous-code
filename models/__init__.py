@@ -1,30 +1,37 @@
 """
-TinyML 模型定义模块
+TinyML model definition module
 
-包含以下核心组件:
-1. 神经网络架构候选表示 (CandidateModel)
-2. 基础卷积块实现 (DWSepConvBlock, MBConvBlock)
+Includes the following core components:
+1. Neural architecture candidates (CandidateModel)
+2. Core convolution block implementations (DWSepConvBlock, MBConvBlock)
 """
 
-# 从候选模型模块导入
+# Import from the candidate model module
 from .candidate_models import CandidateModel
-from .QuantizableModel import QuantizableModel, get_static_quantization_config, get_quantization_option, \
-    print_available_quantization_options, apply_configurable_static_quantization, fuse_model_modules, fuse_QATmodel_modules
-# 从卷积块模块导入
+from .QuantizableModel import (
+    QuantizableModel,
+    get_static_quantization_config,
+    get_quantization_option,
+    print_available_quantization_options,
+    apply_configurable_static_quantization,
+    fuse_model_modules,
+    fuse_QATmodel_modules,
+)
+# Import from the convolution block module
 from .conv_blocks import (
     DWSepConvBlock,
     MBConvBlock,
     SeDpConvBlock,
     DpConvBlock,
-    SeSepConvBlock)
-
+    SeSepConvBlock,
+)
 
 from .base_model import TinyMLModel
-# 显式导出列表
+# Explicit export list
 __all__ = [
-    # 候选模型类
+    # Candidate model class
     'CandidateModel',
-    # 卷积块类
+    # Convolution block classes
     'DWSepConvBlock',
     'MBConvBlock',
     'SeDpConvBlock',
@@ -40,5 +47,5 @@ __all__ = [
     'TinyMLModel',
 ]
 
-# 版本信息
+# Version info
 __version__ = '0.1.0'

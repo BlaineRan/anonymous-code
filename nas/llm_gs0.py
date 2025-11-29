@@ -1,15 +1,15 @@
-import openai  # 或其他 LLM API
+import openai  # or other LLM API
 import sys
 import json5
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
 import re
-# sys.path.append(str(Path(__file__).resolve().parent.parent))  # 添加项目根目录到路径
-from utils import initialize_llm, calculate_memory_usage  # 修改导入路径
-# 从configs导入提示模板
+# sys.path.append(str(Path(__file__).resolve().parent.parent))  # Add project root to the path if required
+from utils import initialize_llm, calculate_memory_usage  # Adjusted import path
+# Import prompt templates from configs
 from configs import get_search_space, get_llm_config, get_tnas_search_space
-# 导入模型和约束验证相关模块
+# Import model and constraint validation modules
 from models import CandidateModel, MBConvBlock, DWSepConvBlock
 from models import QuantizableModel, get_static_quantization_config, get_quantization_option, fuse_model_modules, apply_configurable_static_quantization
 from .constraints import validate_constraints, ConstraintValidator, MemoryEstimator
@@ -25,7 +25,7 @@ import numpy as np
 import os
 from datetime import datetime
 import pytz
-from torchinfo import summary  # 确保 torchinfo 已安装
+from torchinfo import summary  # Ensure torchinfo is installed
 import time
 from tqdm import tqdm
 import traceback
@@ -35,12 +35,12 @@ llm_config = get_llm_config()
 search_space = get_search_space()
 
 
-def evaluate_quantized_model(quantized_model, dataloader, task_head, description="量化模型"):
-    print(f"\n=== 开始评估 {description} ===", flush=True)
+def evaluate_quantized_model(quantized_model, dataloader, task_head, description="Quantized model"):
+    print(f"\n=== Starting evaluation {description} ===", flush=True)
     quantized_model.eval()
     task_head.eval()
 
-    # 强制垃圾回收
+    # Force garbage collection
     import gc
     gc.collect()
     torch.cuda.empty_cache()
@@ -48,41 +48,41 @@ def evaluate_quantized_model(quantized_model, dataloader, task_head, description
     correct = 0
     total = 0
 
-    # 添加更多调试点
-    print("模型和设备信息:", flush=True)
-    print(f"量化模型类型: {type(quantized_model)}", flush=True)
-    print(f"任务头设备: {next(task_head.parameters()).device}", flush=True)
+    # Add additional debug checkpoints
+    print("Model and device info:", flush=True)
+    print(f"Quantized model type: {type(quantized_model)}", flush=True)
+    print(f"Task head device: {next(task_head.parameters()).device}", flush=True)
     
     try:
         with torch.no_grad():
-            # 先测试一个批次
+            # Test one batch first
             test_batch = next(iter(dataloader['test']))
-            print("成功获取测试批次", flush=True)
+            print("Successfully obtained a test batch", flush=True)
             
             for batch_idx, (inputs, labels) in enumerate(dataloader['test']):
-                # print(f"\n处理批次 {batch_idx}", flush=True)
+                # print(f"\nProcessing batch {batch_idx}", flush=True)
                 
                 inputs = inputs.to('cpu')
                 labels = labels.to('cpu')
-                # print(f"输入形状: {inputs.shape}", flush=True)
+                # print(f"Input shape: {inputs.shape}", flush=True)
                 
                 try:
-                    # 获取量化模型的输出特征
+                    # Get output features from the quantized model
                     features = quantized_model(inputs)
-                    # print(f"特征类型: {type(features)}", flush=True)
+                    # print(f"Feature type: {type(features)}", flush=True)
                     
                     if not isinstance(features, torch.Tensor):
-                        # print("执行反量化...", flush=True)
+                        # print("Executing dequantization...", flush=True)
                         features = features.dequantize()
                     
                     if features.device != torch.device('cpu'):
                         features = features.to('cpu')
                     
-                    # # 检查维度
+                    # # Check dimensions
                     # if features.shape[-1] != task_head.in_features:
-                    #     raise ValueError(f"维度不匹配: {features.shape[-1]} != {task_head.in_features}")
+                    #     raise ValueError(f"Dimension mismatch: {features.shape[-1]} != {task_head.in_features}")
                     
-                    # 分类
+                    # Classification
                     outputs = task_head(features)
                     _, predicted = outputs.max(1)
                     
@@ -91,52 +91,52 @@ def evaluate_quantized_model(quantized_model, dataloader, task_head, description
                     total += batch_total
                     correct += batch_correct
                     
-                    # print(f"批次结果: total={batch_total} correct={batch_correct}", flush=True)
-                    # print(f"累计结果: total={total} correct={correct}", flush=True)
+                    # print(f"Batch result: total={batch_total} correct={batch_correct}", flush=True)
+                    # print(f"Accumulated result: total={total} correct={correct}", flush=True)
                     
-                    # 提前退出测试
-                    # if batch_idx >= 4:  # 只测试前几个批次
+                    # Exit early from the evaluation
+                    # if batch_idx >= 4:  # Test only the first few batches
                     #     break
                 except Exception as batch_e:
-                    print(f"批次 {batch_idx} 处理失败: {str(batch_e)}", flush=True)
+                    print(f"Batch {batch_idx} failed: {str(batch_e)}", flush=True)
                     continue
     
-                # 手动清理批次数据
+                # Manually clear batch data
                 del inputs, labels, features, outputs, predicted
                 gc.collect()
 
-        print(f"最终统计: total={total} correct={correct}", flush=True)
+        print(f"Final stats: total={total} correct={correct}", flush=True)
         quant_accuracy = 100. * correct / total if total > 0 else 0
-        print(f"{description} 测试准确率: {quant_accuracy:.2f}%", flush=True)
+        print(f"{description} test accuracy: {quant_accuracy:.2f}%", flush=True)
         return quant_accuracy
     
     except Exception as e:
-        print(f"评估过程中出现错误: {str(e)}", flush=True)
+        print(f"Error during evaluation: {str(e)}", flush=True)
         return 0.0
     
     finally:
-        # 显式清理
+        # Explicit cleanup
         torch.cuda.empty_cache()
-        print("评估完成，资源已清理", flush=True)
+        print("Evaluation complete, resources cleared", flush=True)
 
 class LLMGuidedSearcher:
     """
-    LLM引导的神经网络架构搜索器
+    LLM-guided neural architecture searcher.
     
-    参数:
-        llm_config: LLM配置字典
-        search_space: 搜索空间定义
+    Args:
+        llm_config: LLM configuration dictionary
+        search_space: Search space definition
     """
 #'DSADS' , 'har70plus', 'Harth', 'Mhealth', 'MMAct', 'MotionSense', 'Opp_g', 'PAMAP', 'realworld', 'Shoaib', 'TNDA-HAR', 'UCIHAR', 'USCHAD', 'ut-complex', 'UTD-MHAD', 'w-HAR', 'Wharf', 'WISDM'
     def __init__(self, llm_config, search_space, dataset_names=['USCHAD']):
         self.llm = initialize_llm(llm_config)
         self.search_space = search_space
-        # 初始化Pareto前沿
+        # Initialize the Pareto front
         self.pareto_front = ParetoFront(constraints=search_space['constraints'])
-        self.retries = 3  # 重试次数
-        # 存储最近失败的候选架构
+        self.retries = 3  # Number of retries
+        # Store recently failed candidate architectures
         self.recent_failures: List[Tuple[Dict, str]] = []
-        # 初始化约束验证器
+        # Initialize the constraint validator
         self.validator = ConstraintValidator(search_space['constraints'])
 
         self.dataset_names = dataset_names
@@ -150,49 +150,51 @@ class LLMGuidedSearcher:
         
     def generate_candidate(self, dataset_name: str, feedback: Optional[str] = None) -> Optional[CandidateModel]:
         """
-        使用LLM生成候选架构，基于特定数据集的信息
-        参数:
-            dataset_name: 当前数据集的名称
-            feedback: 上一次的反馈信息
-        返回:
-            一个候选模型
+        Generate a candidate architecture using the LLM based on dataset-specific information.
+
+        Args:
+            dataset_name: Name of the current dataset
+            feedback: Feedback from the previous iteration
+
+        Returns:
+            A candidate model
         """
         for attempt in range(self.retries):
-            include_failures = attempt > 0  # 只在重试时包含失败案例
-            # 构建提示词
+            include_failures = attempt > 0  # Only include failure cases when retrying
+            # Build the prompt
             print(f"include_failures: {include_failures}, attempt: {attempt + 1}")
 
             prompt = self._build_prompt(dataset_name, feedback, include_failures)
 
             try:
-                # 调用 LLM 生成响应
+                # Invoke the LLM to generate a response
                 response = self.llm.invoke(prompt).content
-                print(f"LLM原始响应:\n{response[50:]}\n{'-'*50}")
+                print(f"LLM raw response:\n{response[50:]}\n{'-'*50}")
                 
-                # 解析响应并验证约束
+                # Parse response and validate constraints
                 candidate = self._parse_response(response)
                 if candidate is None:
-                    print("⚠️ 生成的候选架构不符合约束条件")
+                    print("⚠️ Generated candidate does not meet the constraints")
                     continue
-                # 验证约束
+                # Validate constraints
                 is_valid, failure_reason, suggestions  = self._validate_candidate(candidate, dataset_name)
                 if is_valid:
                     return candidate
                 
-                # 记录失败案例
+                # Record the failure case
                 self._record_failure(candidate.config, failure_reason, suggestions)
                 print("\n----------------------------------------\n")
-                print(f"⚠️ 尝试 {attempt + 1} / {self.retries}: 生成的候选架构不符合约束条件: {failure_reason}")
-                print(f"优化建议:\n{suggestions}")
+                print(f"⚠️ Attempt {attempt + 1} / {self.retries}: generated candidate does not meet constraints: {failure_reason}")
+                print(f"Suggestions for improvement:\n{suggestions}")
 
             except Exception as e:
-                print(f"LLM调用失败: {str(e)}")
+                print(f"LLM call failed: {str(e)}")
 
-        print(f"❌ 经过 {self.retries} 次尝试仍未能生成有效架构")
+        print(f"❌ Failed to generate a valid architecture after {self.retries} attempts")
         return None
 
     def _validate_candidate(self, candidate: CandidateModel, dataset_name: str) -> Tuple[bool, str]:
-        """验证候选模型并返回所有失败原因"""
+        """Validate the candidate model and return any failure reasons"""
         violations = []
         suggestions = []
         
@@ -241,15 +243,15 @@ class LLMGuidedSearcher:
         else:
             params_status += " (Compliant with constraints)"
         
-        # # Check Peak Memory constraint
+        # # Check Peak Memory constraint (optional)
         # peak_memory = candidate.measure_peak_memory(device='cuda', dataset_names=dataset_name)
-        # max_peak_memory = float(self.search_space['constraints'].get('max_peak_memory', float('inf'))) / 1e6  # 默认无限制
+        # max_peak_memory = float(self.search_space['constraints'].get('max_peak_memory', float('inf'))) / 1e6  # Default to unlimited
         # peak_memory_status = f"Peak Memory: {peak_memory:.2f}MB"
         # if peak_memory > max_peak_memory:
         #     peak_memory_status += f" (Exceeding the maximum value {max_peak_memory:.2f}MB)"
         #     violations.append(peak_memory_status)
-        #     suggestions.append("- Reduct the number of stages (if there are 5 stages, you can use less!!!)\n"
-        #                        "- Reduce model size by removing redundant blocks\n"
+        #     suggestions.append("- Reduce the number of stages (if there are 5 stages, you can use fewer)\n"
+        #                        "- Remove redundant blocks to reduce model size\n"
         #                        "- Reduce channel distribution in later stages\n"
         #                        "- Use more efficient pooling layers\n"
         #                        "- Consider quantization or pruning")
@@ -257,7 +259,7 @@ class LLMGuidedSearcher:
         #     peak_memory_status += " (Compliant with constraints)"
 
         # Check Estimated Total Size constraint (also treated as Peak Memory)
-        # estimated_total_size_MB = float(candidate.metadata.get('estimated_total_size_MB', '20'))  # 默认使用 Peak Memory
+        # estimated_total_size_MB = float(candidate.metadata.get('estimated_total_size_MB', '20'))  # Default to using peak memory size
         memory_usage = calculate_memory_usage(
             candidate.build_model(),
             input_size=(64, self.dataset_info[dataset_name]['channels'], self.dataset_info[dataset_name]['time_steps']),
@@ -267,12 +269,12 @@ class LLMGuidedSearcher:
         parameter_memory_mb = memory_usage['parameter_memory_MB']
         total_memory_mb = memory_usage['total_memory_MB']
 
-        # 更新 candidate.metadata
+        # Update candidate metadata
         candidate.metadata['activation_memory_MB'] = activation_memory_mb
         candidate.metadata['parameter_memory_MB'] = parameter_memory_mb
         candidate.metadata['estimated_total_size_MB'] = total_memory_mb
 
-        max_peak_memory = float(self.search_space['constraints'].get('max_peak_memory', float('inf'))) / 1e6  # 默认无限制
+        max_peak_memory = float(self.search_space['constraints'].get('max_peak_memory', float('inf'))) / 1e6  # Default to unlimited
         estimated_total_size_status = f"Estimated Total Size: {total_memory_mb:.2f}MB"
         if total_memory_mb > 4 * max_peak_memory:
             estimated_total_size_status += f" (Exceeding 4x the maximum value {4 * max_peak_memory:.2f}MB)"
@@ -286,7 +288,7 @@ class LLMGuidedSearcher:
             estimated_total_size_status += f" (Exceeding the maximum value {max_peak_memory:.2f}MB, but within 4x)"
             suggestions.append("- Consider applying quantization to reduce memory usage")
             estimated_total_size_status += " (The total memory exceeds the maximum value, but does not exceed four times; perhaps it can meet the requirements through quantization.)"
-            # 强制启用静态量化
+            # Force static quantization
             if candidate.config.get('quant_mode', 'none') == 'none':
                 candidate.config['quant_mode'] = 'static'
                 candidate.metadata['quantization_mode'] = 'static'
@@ -297,7 +299,7 @@ class LLMGuidedSearcher:
 
         # Check Latency constraint
         latency = candidate.measure_latency(device='cuda', dataset_names=dataset_name)
-        max_latency = float(self.search_space['constraints'].get('max_latency', float('inf')))  # 默认无限制
+        max_latency = float(self.search_space['constraints'].get('max_latency', float('inf')))  # Default to unlimited
         latency_status = f"Latency: {latency:.2f}ms"
         if latency > max_latency:
             latency_status += f" (Exceeding the maximum value {max_latency:.2f}ms)"
@@ -310,7 +312,7 @@ class LLMGuidedSearcher:
             latency_status += " (Compliant with constraints)"
 
         # Print all metrics
-        print("\n---- 约束验证结果 ----")
+        print("\n---- Constraint validation results ----")
         print(macs_status)
         print(sram_status)
         print(params_status)
@@ -328,25 +330,25 @@ class LLMGuidedSearcher:
 
 
     def _record_failure(self, config: Dict, reason: str, suggestions: Optional[str] = None):
-        """记录失败的候选架构"""
+        """Record failed candidate architectures"""
         failure_entry = {
             "config": config,
             "reason": reason,
             "suggestions": suggestions or "No specific suggestions"
         }
         self.recent_failures.append(failure_entry)
-        # 只保留最近的 self.retries 个失败案例
+        # Keep only the latest self.retries failure cases
         if len(self.recent_failures) > self.retries:
             self.recent_failures.pop(0)
     
     def apply_quantization(self, model, dataloader, quant_mode, dataset_name=None):
         """
-        根据量化模式对模型进行静态、动态 或 QAT量化 。
+        Quantize the model statically, dynamically, or via QAT, depending on the mode.
         """
         import gc
         import copy
 
-        # 创建模型的深拷贝，避免影响原模型
+        # Create a deep copy of the model to avoid affecting the original
         model_copy = copy.deepcopy(model)
 
         if quant_mode == 'dynamic':
@@ -358,25 +360,25 @@ class LLMGuidedSearcher:
             )
 
         elif quant_mode == 'static':
-            # 选择要使用的配置
+            # Choose the quantization option to use
             available_options = [
-                'int8_default',         # 默认INT8
-                'int8_per_channel',     # 逐通道INT8 (推荐)
-                'int8_reduce_range',    # 保守INT8
-                'int8_asymmetric',      # 非对称INT8
-                'int8_histogram',       # 直方图校准
-                'int8_mobile',          # 移动端优化
-                'int16',     # INT16激活 ⭐新增⭐
-                'int16_weight',         # INT16权重 ⭐新增⭐
-                'int16_full',          # INT16全精度 ⭐新增⭐
+                'int8_default',         # Default INT8
+                'int8_per_channel',     # Per-channel INT8 (recommended)
+                'int8_reduce_range',    # Reduced-range INT8
+                'int8_asymmetric',      # Asymmetric INT8
+                'int8_histogram',       # Histogram calibration
+                'int8_mobile',          # Mobile optimization
+                'int16',     # INT16 activation ⭐new⭐
+                'int16_weight',         # INT16 weights ⭐new⭐
+                'int16_full',          # INT16 full precision ⭐new⭐
             ]
 
-            # 选择配置 (你可以修改这里)
-            selected_option = 'int8_default'  # 或者选择 int16_activation
+            # Select configuration (you can modify this)
+            selected_option = 'int8_default'  # Or choose int16_activation
             quant_config = get_quantization_option(selected_option)
-            print(f"📋 选择量化配置: {quant_config['description']}")
-            print(f"   预期内存节省: {quant_config['memory_saving']}")
-            print(f"   预期精度损失: {quant_config['precision_loss']}")
+            print(f"📋 Selected quantization config: {quant_config['description']}")
+            print(f"   Expected memory saving: {quant_config['memory_saving']}")
+            print(f"   Expected accuracy drop: {quant_config['precision_loss']}")
 
             quantized_model = apply_configurable_static_quantization(
                 model_copy,
@@ -388,26 +390,26 @@ class LLMGuidedSearcher:
             qat_model = model_copy
             qat_model.to('cpu').eval()
             fuse_model_modules(qat_model)
-            print("⚙️ 转换最终QAT模型...")
+            print("⚙️ Converting final QAT model...")
             quantized_model = quantization.convert(qat_model, inplace=True)
-            print("✅ QAT模型转换完成。")
+            print("✅ QAT model conversion complete.")
         else:
             return model, None
         
-         # 确保量化模型在CPU上并设置为评估模式
+        # Ensure the quantized model is on the CPU and in evaluation mode
         if hasattr(quantized_model, 'to'):
             quantized_model = quantized_model.to('cpu')
         quantized_model.eval()
 
-        # 从 dataset_info 中动态获取时间步和输入通道
+        # Dynamically fetch time steps and input channels from dataset_info
         time_steps = self.dataset_info[dataset_name]['time_steps']
         input_channels = self.dataset_info[dataset_name]['channels']
-        # 测量量化模型的性能
+        # Measure quantized model performance
         if quantized_model is not None:
-            # 在 CPU 上测量推理延迟
+            # Measure inference latency on the CPU
             device = torch.device("cpu")
             dummy_input = torch.randn(64, input_channels, time_steps, device=device)
-            print(f"⏱️ 测量量化模型在 {device} 上的推理延迟...")
+            print(f"⏱️ Measuring quantized model latency on {device}...")
             repetitions = 100
             timings = []
             with torch.no_grad():
@@ -415,15 +417,15 @@ class LLMGuidedSearcher:
                     start_time = time.time()
                     _ = quantized_model(dummy_input)
                     end_time = time.time()
-                    if i >= 10:  # 跳过前 10 次运行以避免冷启动影响
+                    if i >= 10:  # Skip the first 10 runs to avoid cold-start effects
                         timings.append((end_time - start_time) * 1000)
             latency_ms = sum(timings) / len(timings) if timings else 0
-            print(f"⏱️ 推理延迟: {latency_ms:.2f} ms")
+            print(f"⏱️ Inference latency: {latency_ms:.2f} ms")
 
-            # 测量内存使用
+            # Measure memory usage
             memory_usage = calculate_memory_usage(quantized_model, input_size=(64, input_channels, time_steps), device=device)
 
-            # 清理临时变量
+            # Clean up temporary variables
             del dummy_input
             del model_copy
             gc.collect()
@@ -431,11 +433,11 @@ class LLMGuidedSearcher:
             activation_memory_mb = memory_usage['activation_memory_MB']
             parameter_memory_mb = memory_usage['parameter_memory_MB']
             peak_memory_mb = memory_usage['total_memory_MB']
-            print(f"激活内存: {activation_memory_mb:.2f} MB")
-            print(f"参数内存: {parameter_memory_mb:.2f} MB")
-            print(f"峰值内存估算: {peak_memory_mb:.2f} MB")
+            print(f"Activation memory: {activation_memory_mb:.2f} MB")
+            print(f"Parameter memory: {parameter_memory_mb:.2f} MB")
+            print(f"Estimated peak memory: {peak_memory_mb:.2f} MB")
 
-            # 返回量化模型和性能指标
+            # Return quantized model and performance metrics
             return quantized_model, {
                 'latency': latency_ms,
                 'activation_memory': activation_memory_mb,
@@ -443,35 +445,36 @@ class LLMGuidedSearcher:
                 'peak_memory': peak_memory_mb
             }
         else:
-            print("❌ 量化失败，返回原始模型")
+            print("❌ Quantization failed, returning original model")
             return model, None
 
     def _build_prompt(self, dataset_name: str, feedback: Optional[str], include_failures: bool) -> str:
         """
-        构建LLM提示，基于特定数据集的信息
-        参数:
-            dataset_name: 当前数据集的名称
-            feedback: 上一次的反馈信息
-            include_failures: 是否包含失败案例
+        Build the LLM prompt based on dataset-specific information.
+
+        Args:
+            dataset_name: Name of the current dataset
+            feedback: Feedback from the previous iteration
+            include_failures: Whether to include failure cases
         """
         dataset_info = self.dataset_info[dataset_name]
-        # 从Pareto前沿获取反馈(如果未提供)
+        # Get feedback from the Pareto front (if not provided)
         if feedback is None:
             feedback = self.pareto_front.get_feedback()
 
-        # 从搜索空间获取约束条件，并确保数值是 int/float
+        # Extract constraints from the search space and ensure numeric types
         constraints = {
-            'max_sram': float(self.search_space['constraints']['max_sram']) / 1024,  # 转换为KB
-            'min_macs': float(self.search_space['constraints']['min_macs']) / 1e6,   # 转换为M
-            'max_macs': float(self.search_space['constraints']['max_macs']) / 1e6,   # 转换为M
-            'max_params': float(self.search_space['constraints']['max_params']) / 1e6,  # 转换为M
-            'max_peak_memory': float(self.search_space['constraints']['max_peak_memory']) / 1e6,  # 转换为MB  默认200MB
+            'max_sram': float(self.search_space['constraints']['max_sram']) / 1024,  # Converted to KB
+            'min_macs': float(self.search_space['constraints']['min_macs']) / 1e6,   # Converted to M
+            'max_macs': float(self.search_space['constraints']['max_macs']) / 1e6,   # Converted to M
+            'max_params': float(self.search_space['constraints']['max_params']) / 1e6,  # Converted to M
+            'max_peak_memory': float(self.search_space['constraints']['max_peak_memory']) / 1e6,  # Converted to MB (default 200MB)
             'max_latency': float(self.search_space['constraints']['max_latency']) 
         }
 
         print(f"\nfeedback: {feedback}\n")
 
-        # 构建失败案例反馈部分
+        # Build the failure case feedback section
         failure_feedback = ""
         if include_failures and self.recent_failures:
             failure_feedback = "\n**Recent failed architecture cases, reasons and suggestions:**\n"
@@ -581,15 +584,15 @@ class LLMGuidedSearcher:
                 num_classes=dataset_info['num_classes'],
                 description=dataset_info['description']
             )
-        # 构建完整提示
-        # print(f"构建的提示:\n{search_prompt}...\n{'-'*50}")
+        # Construct the full prompt
+        # print(f"Constructed prompt:\n{search_prompt}...\n{'-'*50}")
        
         return search_prompt
     
     def _parse_response(self, response: str) -> Optional[CandidateModel]:
-        """解析LLM响应为候选模型"""
+        """Parse the LLM response into a candidate model"""
         try:
-            # 尝试解析JSON响应
+            # Try to parse the JSON response
             json_match = re.search(r'```json(.*?)```', response, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1).strip()
@@ -597,13 +600,13 @@ class LLMGuidedSearcher:
             else:
                 json_match = re.search(r'```(.*?)```', response, re.DOTALL)
                 config = json5.loads(json_str)
-            # print(f"解析出的配置:\n{json.dumps(config, indent=2)}")
+            # print(f"Parsed config:\n{json.dumps(config, indent=2)}")
 
-            # 基本配置验证
+            # Basic configuration validation
             if not all(k in config for k in ['stages', 'constraints']):
-                raise ValueError("配置缺少必要字段(stages 或 constraints)")
+                raise ValueError("Config is missing required fields (stages or constraints)")
 
-            # 确保所有数值字段都是数字类型
+            # Ensure numeric fields are actual numbers
             def convert_numbers(obj):
                 if isinstance(obj, dict):
                     return {k: convert_numbers(v) for k, v in obj.items()}
@@ -618,33 +621,33 @@ class LLMGuidedSearcher:
 
             config = convert_numbers(config)
 
-            # 检查是否包含量化模式
+            # Check if a quantization mode is included
             quantization_mode = config.get('quant_mode', 'none')
             if quantization_mode not in self.search_space['search_space']['quantization_modes']:
-                quantization_mode = 'none'  # 默认不量化
+                quantization_mode = 'none'  # Default to no quantization
             
-            # 创建候选模型实例
+            # Create a candidate model instance
             candidate = CandidateModel(config=config)
             candidate.metadata['quantization_mode'] = quantization_mode
             return candidate
 
             
         except json.JSONDecodeError:
-            print(f"无法解析LLM响应为JSON: {response}")
+            print(f"Failed to parse LLM response as JSON: {response}")
             return None
         except Exception as e:
-            print(f"配置解析失败: {str(e)}")
+            print(f"Config parsing failed: {str(e)}")
             return None
 
 
     def run_search(self, iterations: int = 100) -> Dict:
         """
-        运行完整的搜索流程
+        Run the full search process.
         
-        参数:
-            iterations: 搜索迭代次数
-        返回:
-            包含最佳模型和Pareto前沿的字典
+        Args:
+            iterations: Number of search iterations
+        Returns:
+            A dictionary containing the best models and Pareto front
         """
 
         dataloaders = get_multitask_dataloaders('/root/tinyml/data')
@@ -656,68 +659,68 @@ class LLMGuidedSearcher:
 
         best_models = []
 
-        # 设置中国标准时间（UTC+8）
+        # Set China Standard Time (UTC+8)
         china_timezone = pytz.timezone("Asia/Shanghai")
-        # 确保主保存目录存在
+        # Ensure the base save directory exists
         base_save_dir = "/root/tinyml/weights/tinyml"
         os.makedirs(base_save_dir, exist_ok=True)
 
-        # 创建一个唯一的时间戳子文件夹
-        timestamp = datetime.now(china_timezone).strftime("%m-%d-%H-%M")  # 格式为 "月-日-时-分"
+        # Create a unique timestamped subfolder
+        timestamp = datetime.now(china_timezone).strftime("%m-%d-%H-%M")  # Format: "MM-DD-HH-MM"
         run_save_dir = os.path.join(base_save_dir, timestamp)
-        os.makedirs(run_save_dir, exist_ok=True)  # 确保子文件夹存在
+        os.makedirs(run_save_dir, exist_ok=True)  # Ensure the subfolder exists
 
-        print(f"所有模型将保存到目录: {run_save_dir}")
+        print(f"All models will be saved to: {run_save_dir}")
         
-        # 初始化结果字典
+        # Initialize the overall results dictionary
         overall_results = {}
 
-        # 遍历每个数据集
+        # Iterate through each dataset
         for dataset_name in self.dataset_names:
-            print(f"\n{'='*30} 开始搜索数据集: {dataset_name} {'='*30}")
+            print(f"\n{'='*30} Starting search for dataset: {dataset_name} {'='*30}")
 
-            # 重置 Pareto 前沿，确保每个任务从零开始
+            # Reset the Pareto front to start fresh for each task
             self.pareto_front.reset()
 
-            # 初始化每个数据集的结果
+            # Initialize results for this dataset
             dataset_results = {
                 'best_models': [],
                 'pareto_front': []
             }
 
-            # 为当前数据集创建独立的保存目录
+            # Create a dataset-specific save directory
             dataset_save_dir = os.path.join(run_save_dir, dataset_name)
             os.makedirs(dataset_save_dir, exist_ok=True)
 
-            # 获取当前数据集的数据加载器
+            # Fetch the dataloader for the current dataset
             dataloader = dataloaders[dataset_name]
-            # 为当前数据集运行 `iterations` 次搜索
+            # Run `iterations` search iterations for this dataset
 
-            input_shape = (64, self.dataset_info[dataset_name]['channels'], self.dataset_info[dataset_name]['time_steps'])  # 确保输入形状正确
+            input_shape = (64, self.dataset_info[dataset_name]['channels'], self.dataset_info[dataset_name]['time_steps'])  # Ensure input shape is correct
 
             for i in range(iterations):
-                print(f"\n{'-'*30} 数据集 {dataset_name} - 迭代 {i+1}/{iterations} {'-'*30}")
+                print(f"\n{'-'*30} Dataset {dataset_name} - Iteration {i+1}/{iterations} {'-'*30}")
                 
-                # 生成候选架构
+                # Generate a candidate architecture
                 candidate = self.generate_candidate(dataset_name)
                 if candidate is None:
                     continue
                 
-                # 评估候选架构
+                # Evaluate the candidate architecture
                 try:
-                    # 构建模型
+                    # Build the model
                     model = candidate.build_model()
-                    print("✅ 模型构建成功")
-                    # 验证模型输出维度
+                    print("✅ Model built successfully")
+                    # Verify the model output dimension
                     if not hasattr(model, 'output_dim'):
                         raise AttributeError("Built model missing 'output_dim' attribute")
-                    print(f"模型输出维度: {model.output_dim}")
+                    print(f"Model output dimension: {model.output_dim}")
 
                     def get_attr(obj, name, default=None):
                         val = getattr(obj, name, default)
-                        # 如果是 list（如 summary_list），转为字符串或只保留层类型和参数数
+                        # If it's a list (e.g., summary_list), convert to strings or keep only layer type and parameter counts
                         if name == "summary_list" and isinstance(val, list):
-                            # 只保留层类型和参数数
+                            # Keep only layer type and parameter counts
                             return [
                                 {
                                     "layer": str(layer),
@@ -725,7 +728,7 @@ class LLMGuidedSearcher:
                                 }
                                 for layer in val
                             ]
-                        # 如果是 torchinfo 的特殊类型，转为 float/int
+                        # If it's a torchinfo-specific type, convert to float/int
                         if isinstance(val, (float, int, str, type(None), list, dict)):
                             return val
                         try:
@@ -734,45 +737,45 @@ class LLMGuidedSearcher:
                             return str(val)
                         return val
                     
-                    # 训练并评估模型
+                    # Train and evaluate the model
                     # trainer = MultiTaskTrainer(model, dataloaders)
-                    # 创建训练器
+                    # Create a trainer
                     trainer = SingleTaskTrainer(model, dataloader)
 
-                    # 为每个候选模型生成唯一的保存路径
+                    # Generate a unique save path for each candidate model
                     save_path = os.path.join(dataset_save_dir, f"best_model_iter_{i+1}.pth")
 
-                    # 训练模型并保存最佳权重
-                    best_acc, best_val_metrics, history, best_state = trainer.train(epochs=10, save_path=save_path)  # 快速训练5个epoch
+                    # Train the model and save the best weights
+                    best_acc, best_val_metrics, history, best_state = trainer.train(epochs=10, save_path=save_path)  # Quick 10-epoch run
 
-                    # 使用最佳准确率作为候选模型的准确率
+                    # Use the best accuracy as the candidate score
                     candidate.accuracy = best_acc
-                    candidate.val_accuracy = best_val_metrics['accuracy'] / 100  # 保存最佳验证准确率
-                    candidate.metadata['best_model_path'] = save_path  # 保存最佳权重路径
+                    candidate.val_accuracy = best_val_metrics['accuracy'] / 100  # Store the best validation accuracy
+                    candidate.metadata['best_model_path'] = save_path  # Save the best weights path
 
-                    # 1. 测量在GPU上的结果
-                    # 测量峰值内存（GPU）
+                    # 1. Measure results on the GPU
+                    # Measure peak memory on GPU
                     peak_memory_mb = candidate.measure_peak_memory(device='cuda', dataset_names=dataset_name)
                     print(f"Peak Memory Usage: {peak_memory_mb:.2f} MB")
-                    # 测量推理时延（GPU）
+                    # Measure inference latency on GPU
                     latency_ms = candidate.measure_latency(device='cuda', dataset_names=dataset_name)
                     print(f"⏱️ Inference Latency: {latency_ms:.2f} ms")
 
-                    # 2. 测量原始模型在CPU上的延迟
+                    # 2. Measure CPU inference latency
                     cpu_latency_ms = candidate.measure_latency(device='cpu', dataset_names=dataset_name)
                     print(f"⏱️ CPU Inference Latency: {cpu_latency_ms:.2f} ms")
-                    # 3. 计算原始模型的内存使用（使用calculate_memory_usage）
+                    # 3. Compute original model memory usage
                     original_memory_usage = calculate_memory_usage(
                         model,
                         input_size=(64, self.dataset_info[dataset_name]['channels'], self.dataset_info[dataset_name]['time_steps']),
                         device='cpu'
                     )
-                    print(f"原始模型内存使用:")
-                    print(f"  - 激活内存: {original_memory_usage['activation_memory_MB']:.2f} MB")
-                    print(f"  - 参数内存: {original_memory_usage['parameter_memory_MB']:.2f} MB")
-                    print(f"  - 总内存: {original_memory_usage['total_memory_MB']:.2f} MB")
+                    print("Original model memory usage:")
+                    print(f"  - Activation memory: {original_memory_usage['activation_memory_MB']:.2f} MB")
+                    print(f"  - Parameter memory: {original_memory_usage['parameter_memory_MB']:.2f} MB")
+                    print(f"  - Total memory: {original_memory_usage['total_memory_MB']:.2f} MB")
 
-                    # 保存原始模型的性能指标到metadata
+                    # Save original model metrics to metadata
                     candidate.metadata.update({
                         'original_gpu_latency': latency_ms,
                         'original_cpu_latency': cpu_latency_ms,
@@ -787,48 +790,48 @@ class LLMGuidedSearcher:
                     candidate.metadata['quant_model_path'] = None
                     candidate.metadata['quantized_accuracy'] = None
 
-                    # 量化处理
+                    # Quantization processing
                     if candidate.metadata['quantization_mode'] != 'none':
                         quant_mode = candidate.metadata['quantization_mode']
-                        print(f"⚙️ LLM选择了量化模式: {quant_mode}")
+                        print(f"⚙️ LLM selected quantization mode: {quant_mode}")
                         
-                        # 执行量化并获取量化模型和性能指标
+                        # Apply quantization and obtain the quantized model and performance metrics
                         quantized_model, quant_metrics = self.apply_quantization(model, dataloader, quant_mode, dataset_name)
-                        print(f"✅ 量化完成: {quant_mode}")
+                        print(f"✅ Quantization complete: {quant_mode}")
                         if quant_metrics:
-                            # 创建任务头并加载权重
+                            # Create the task head and load weights
                             task_head = nn.Linear(model.output_dim, len(dataloader['test'].dataset.classes)).to('cpu')
                             if best_state is not None and 'head' in best_state:
                                 task_head.load_state_dict(best_state['head'])
-                            print(f"任务头已经创建。")
-                            # 调用重写的准确率评估函数
-                            quant_accuracy = evaluate_quantized_model(quantized_model, dataloader, task_head, description="量化模型")
+                            print("Task head created.")
+                            # Call the overridden accuracy evaluation function
+                            quant_accuracy = evaluate_quantized_model(quantized_model, dataloader, task_head, description="Quantized model")
                             print(f"\nquant_accuracy is over.\n")
-                            # 计算量化精度下降
+                            # Compute the quantization accuracy drop
                             if best_val_metrics is not None:
                                 original_accuracy = best_val_metrics['accuracy']
                                 accuracy_drop = original_accuracy - quant_accuracy
-                                print(f"原始模型验证准确率: {original_accuracy:.2f}%")
-                                print(f"量化精度下降: {accuracy_drop:.2f}% ({accuracy_drop/original_accuracy*100:.2f}%)")
+                                print(f"Original model validation accuracy: {original_accuracy:.2f}%")
+                                print(f"Quantized accuracy drop: {accuracy_drop:.2f}% ({accuracy_drop/original_accuracy*100:.2f}%)")
 
-                            # 更新候选模型的量化性能
+                            # Update candidate metadata with quantization metrics
                             candidate.metadata.update({
                                 'quantized_accuracy': quant_accuracy,
-                                'quantized_cpu_latency': quant_metrics['latency'],  # 这是CPU延迟
+                                'quantized_cpu_latency': quant_metrics['latency'],  # This is CPU latency
                                 'quantized_activation_memory': quant_metrics['activation_memory'],
                                 'quantized_parameter_memory': quant_metrics['parameter_memory'],
-                                'quantized_total_memory': quant_metrics['peak_memory']  # 这实际是总内存
+                                'quantized_total_memory': quant_metrics['peak_memory']  # This is total memory usage
                             })
 
-                            # 保存量化模型
+                            # Save the quantized model
                             quant_save_path = os.path.join(dataset_save_dir, f"quant_model_iter_{i+1}.pth")
                             torch.save(quantized_model.state_dict(), quant_save_path)
-                            candidate.metadata['quant_model_path'] = quant_save_path  # 记录路径
+                            candidate.metadata['quant_model_path'] = quant_save_path  # Record the path
 
-                            # 更新JSON文件中的信息
+                            # Update information in the JSON file
                             candidate.metadata['quant_model_path'] = quant_save_path
 
-                            # 保存量化相关指标
+                            # Save quantization-related metrics
                             quantized_metrics = {
                                 'quantized_accuracy': quant_accuracy,
                                 'quantized_latency': quant_metrics['latency'],
@@ -837,32 +840,32 @@ class LLMGuidedSearcher:
                                 'quantized_peak_memory': quant_metrics['peak_memory']
                             }
                         else:
-                            print("🔧 LLM 选择修改架构，跳过量化")
+                            print("🔧 LLM chose to modify the architecture; skipping quantization")
 
                     else:
-                        print("🔧 LLM选择修改架构，跳过量化")
+                        print("🔧 LLM chose to modify the architecture; skipping quantization")
 
-                    # 分析训练结果
-                    print("\n=== 训练结果 ===")
-                    # print(f"最佳验证准确率: {best_acc:.2%}")
+                    # Analyze training results
+                    print("\n=== Training results ===")
+                    # print(f"Best validation accuracy: {best_acc:.2%}")
                     
                     for epoch, record in enumerate(history):
                         print(f"\nEpoch {epoch+1}:")
-                        print(f"训练准确率: {record['train']['accuracy']:.2f}%")
-                        print(f"验证准确率: {record['val']['accuracy']:.2f}%")
+                        print(f"Training accuracy: {record['train']['accuracy']:.2f}%")
+                        print(f"Validation accuracy: {record['val']['accuracy']:.2f}%")
 
-                    print("\n✅ 训练测试完成 ")
+                    print("\n✅ Training complete")
 
-                     # 打印训练后模型统计信息
-                    print("\n=== 训练后模型统计信息 ===")
+                     # Print post-training model statistics
+                    print("\n=== Post-training model statistics ===")
                     try:
-                        post_train_summary = summary(model, input_size=input_shape)  # 假设输入时间步长为500
+                        post_train_summary = summary(model, input_size=input_shape)  # Assume input time steps are 500
                         # print(post_train_summary)
                     except ImportError:
-                        print("⚠️ 未安装torchinfo，无法打印模型结构")
+                        print("⚠️ torchinfo is not installed; cannot print model structure")
                         post_train_summary = None
 
-                    # # 提取并保存训练后的统计信息
+                    # # Extract and save post-training statistics
                     # if post_train_summary:
                     #     input_size_bytes = get_attr(post_train_summary, 'total_input')
                     #     input_size_MB = input_size_bytes / (1000 ** 2)
@@ -886,46 +889,46 @@ class LLMGuidedSearcher:
                     # else:
                     #     post_train_stats = {}
 
-                    # print(f"测试post_train_stats:{post_train_stats}\n")
-                    # 计算指标
+                    # print(f"Testing post_train_stats:{post_train_stats}\n")
+                    # Compute metrics
                     metrics = {
                         'macs': candidate.estimate_macs(),
                         'params': candidate.estimate_params(),
-                        # 这个地方绝对错误
+                        # This part is definitely wrong
                         'sram': MemoryEstimator.calc_model_sram(candidate),
-                        # 这里需要添加实际评估准确率的方法
+                        # Need to add an actual accuracy evaluation method here
                         'accuracy': best_acc,
                         'val_accuracy': candidate.val_accuracy,
-                        'latency': cpu_latency_ms,  # 新增latency指标
-                        'peak_memory': peak_memory_mb,  # 新增峰值内存指标
-                        'estimated_total_size_MB': original_memory_usage['total_memory_MB']  # 新增
+                        'latency': cpu_latency_ms,  # Added latency metric
+                        'peak_memory': peak_memory_mb,  # Added peak memory metric
+                        'estimated_total_size_MB': original_memory_usage['total_memory_MB']  # Added estimated total size
                         # original_memory_usage['total_memory_MB'] candidate.metadata['estimated_total_size_MB']
                     }
 
-                    # 如果量化模式不是 'none'，将量化相关指标合并到 metrics 中
+                    # If quantization mode is not 'none', merge the quantization metrics into the metrics dictionary
                     if quantized_metrics:
                         metrics.update(quantized_metrics)
-                        # 标记使用量化指标进行比较
+                        # Flag that quantization metrics were used for comparison
                         metrics['use_quantized_metrics'] = True
                     else:
                         metrics['use_quantized_metrics'] = False
 
 
-                    # 更新Pareto前沿
+                    # Update the Pareto front
                     if self.pareto_front.update(candidate, metrics):
-                        print("✅ 新候选加入 Pareto 前沿")
+                        print("✅ New candidate added to the Pareto front")
                     
-                    # 记录最佳模型
+                    # Record the best model
                     if self.pareto_front.is_best(candidate):
                         best_models.append(candidate)
-                        print("🏆 新的最佳模型!")
+                        print("🏆 New best model!")
                 except Exception as e:
-                    print(f"模型评估失败: {str(e)}")
+                    print(f"Model evaluation failed: {str(e)}")
                     continue
 
-            # # 打印 Pareto 前沿中的所有模型信息
+            # # Print information for all models in the Pareto front
             print("\n=== Pareto Front Summary ===")
-            pareto_info = []  # 用于保存Pareto前沿信息
+            pareto_info = []  # Used to store Pareto front information
             for i, candidate in enumerate(self.pareto_front.get_front(), 1):
                 model_info = {
                     "index": i,
@@ -934,7 +937,7 @@ class LLMGuidedSearcher:
                     "params": float(candidate.params),
                     "sram": float(candidate.sram) / 1e3,
 
-                    # 原始模型性能指标
+                    # Original model performance metrics
                     "original_gpu_latency": candidate.metadata.get('original_gpu_latency', 0),
                     "original_cpu_latency": candidate.metadata.get('original_cpu_latency', 0),
                     "original_gpu_peak_memory": candidate.metadata.get('original_gpu_peak_memory', 0),
@@ -942,7 +945,7 @@ class LLMGuidedSearcher:
                     "original_parameter_memory": candidate.metadata.get('original_parameter_memory', 0),
                     "original_total_memory": candidate.metadata.get('original_total_memory', 0),
                     
-                    # 量化相关信息
+                    # Quantization-related information
                     "quantization_mode": candidate.metadata.get('quantization_mode', 'none'),
                     "quantized_accuracy": candidate.metadata.get('quantized_accuracy', 'N/A'),
                     "quantized_cpu_latency": candidate.metadata.get('quantized_cpu_latency', 'N/A'),
@@ -951,7 +954,7 @@ class LLMGuidedSearcher:
                     "quantized_total_memory": candidate.metadata.get('quantized_total_memory', 'N/A'),
 
                     # "latency": float(candidate.latency),
-                    "peak_memory": float(candidate.peak_memory),  # 转换为KB
+                    "peak_memory": float(candidate.peak_memory),  # Converted to KB
                     "val_accuracy": candidate.val_accuracy,
                     "quant_model_path": candidate.metadata['quant_model_path'],
                     "best_model_path": candidate.metadata.get('best_model_path', 'N/A'),
@@ -977,33 +980,33 @@ class LLMGuidedSearcher:
                 print(f"- Best Model Path: {candidate.metadata.get('best_model_path', 'N/A')}")
                 print(f"- Configuration: {json.dumps(candidate.config, indent=2)}")
 
-            # 保存Pareto前沿信息到JSON文件
+            # Save Pareto front information to a JSON file
             pareto_save_path = os.path.join(dataset_save_dir, "pareto_front.json")
             try:
                 with open(pareto_save_path, 'w', encoding='utf-8') as f:
                     json.dump(pareto_info, f, indent=2, ensure_ascii=False)
-                print(f"\n✅ Pareto 前沿信息已保存到: {pareto_save_path}")
+                print(f"\n✅ Pareto front information saved to: {pareto_save_path}")
             except Exception as e:
-                print(f"\n❌ 保存 Pareto 前沿信息失败: {str(e)}")
+                print(f"\n❌ Failed to save Pareto front information: {str(e)}")
 
-            # 将当前数据集的结果存储到整体结果中
+            # Store the current dataset's results into the overall results
             dataset_results['pareto_front'] = self.pareto_front.get_front()
             overall_results[dataset_name] = dataset_results
 
         return overall_results
 
 
-# 示例用法
+# Example usage
 if __name__ == "__main__":
     
-    # 创建搜索器实例
+    # Create the searcher instance
     searcher = LLMGuidedSearcher(llm_config["llm"], search_space)
     
-    # 运行搜索
+    # Run the search
     results = searcher.run_search(iterations=3)
 
-    # 打印每个数据集的 Pareto 前沿模型数量
+    # Print the Pareto front model count for each dataset
     for dataset_name, dataset_results in results.items():
         pareto_count = len(dataset_results['pareto_front'])
-        print(f"数据集 {dataset_name} 的 Pareto 前沿模型数量: {pareto_count}")
+        print(f"Dataset {dataset_name} Pareto front model count: {pareto_count}")
 

@@ -113,7 +113,7 @@ class MBConvBlock(nn.Module):
 
 
 class DpConvBlock(nn.Module):
-    """纯Depthwise + Pointwise卷积（无SE模块）"""
+    """Pure depthwise + pointwise convolution (without SE)"""
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, activation='ReLU6', quant_mode=None):
         super().__init__()
         self.dw_conv = nn.Sequential(
@@ -133,7 +133,7 @@ class DpConvBlock(nn.Module):
     
 
 class SeSepConvBlock(nn.Module):
-    """带SE模块的Depthwise Separable卷积"""
+    """Depthwise separable convolution with an SE module"""
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride=1, has_se=True, se_ratio=0.25, activation='ReLU6', se_activation='Sigmoid', quant_mode=None):
         super().__init__()
@@ -156,7 +156,7 @@ class SeSepConvBlock(nn.Module):
         return out
     
 class SeDpConvBlock(nn.Module):
-    """带SE模块的纯Depthwise卷积（无Pointwise）"""
+    """Pure depthwise convolution with SE (no pointwise layer)"""
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride=1, has_se=True, se_ratio=0.25, activation='ReLU6', se_activation='Sigmoid', quant_mode=None):
         super().__init__()

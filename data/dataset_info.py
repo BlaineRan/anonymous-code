@@ -113,5 +113,5 @@ DATASET_INFO_MAP = {
 }
 
 def get_dataset_info(dataset_name: str) -> dict:
-    """获取指定数据集的信息"""
+    """Retrieve information for the specified dataset"""
     return DATASET_INFO_MAP.get(dataset_name, {})

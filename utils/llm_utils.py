@@ -8,15 +8,15 @@ from langchain_openai import ChatOpenAI
 
 class LLMInitializer:
     """
-    集中管理 LLM 初始化的工具类，确保所有模块使用统一的LLM配置
+    Centralized helper for initializing the LLM and ensuring all modules share the same configuration.
     """
     _instance = None
     
     def __init__(self, config_path: Optional[str] = None, **kwargs):
-        # 从YAML文件加载配置（如果未提供参数）
+        # Load configuration from a YAML file (if no parameters are provided)
         if not kwargs and config_path:
             config = self._load_config(config_path)
-            kwargs = config['llm']  # 提取llm配置部分
+            kwargs = config['llm']  # Get the llm configuration section
         
         self.llm = ChatOpenAI(
             model=kwargs.get("model_name", "gpt-4o"),
@@ -27,7 +27,7 @@ class LLMInitializer:
     
     @classmethod
     def _load_config(cls, config_path: str) -> dict:
-        """加载YAML配置文件"""
+        """Load the YAML configuration file."""
         path = Path(config_path)
         if not path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
@@ -35,14 +35,14 @@ class LLMInitializer:
     
     @classmethod
     def initialize(cls, config_path: str = None, **kwargs):
-        """初始化LLM单例"""
+        """Initialize the LLM singleton."""
         if cls._instance is None:
             cls._instance = cls(config_path, **kwargs)
         return cls._instance
     
     @classmethod
     def get_llm(cls):
-        """获取已初始化的LLM实例"""
+        """Get the initialized LLM instance."""
         if cls._instance is None:
             default_config = str(Path(__file__).parent.parent / "configs" / "llm_config.yaml")
             cls.initialize(config_path=default_config)
@@ -51,8 +51,8 @@ class LLMInitializer:
 
 def initialize_llm(llm_config: dict = None):
     """
-    初始化LLM的工厂函数
-    :param llm_config: 可选，如果不提供则从默认配置文件读取
+    Factory function for initializing the LLM.
+    :param llm_config: Optional parameter; if not provided, read from the default config file.
     """
     if llm_config is None:
         config_path = str(Path(__file__).parent.parent / "configs" / "llm_config.yaml")
@@ -61,11 +61,11 @@ def initialize_llm(llm_config: dict = None):
 
 
 # if __name__ == "__main__":
-#     # 示例用法（自动从configs/llm_config.yaml加载配置）
+#     # Example usage (automatically loads config from configs/llm_config.yaml)
 #     llm = LLMInitializer.get_llm()
     
-#     # 对话演示
+#     # Conversation demo
 #     history = ChatMessageHistory()
-#     history.add_user_message("请推荐一个轻量级CNN架构")
+#     history.add_user_message("Please recommend a lightweight CNN architecture")
 #     response = llm.invoke(history.messages)
-#     print("AI回复:", response.content)
+#     print("AI response:", response.content)

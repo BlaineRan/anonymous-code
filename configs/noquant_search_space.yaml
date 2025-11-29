@@ -18,4 +18,4 @@ constraints:
   max_sram: 2000e3
   max_params: 5e6
   max_peak_memory: 20e6
-  max_latency: 5000  # 单位为毫秒
+  max_latency: 5000  # In milliseconds

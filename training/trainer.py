@@ -5,44 +5,44 @@ from tqdm import tqdm
 import numpy as np
 from collections import defaultdict
 
-# 设置随机数种子
-SEED = 42  # 你可以选择任何整数作为种子
+# Set random seed
+SEED = 42  # You can choose any integer as seed
 torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 
 
 class SingleTaskTrainer:
     """
-    针对单个数据集的训练器
+    Trainer for single dataset
     """
     def __init__(self, model, dataloaders, device='cuda', logger=None):
         """
-        初始化训练器
+        Initialize trainer
 
-        参数:
-            model: 要训练的模型
-            dataloaders: 数据加载器字典，包含 'train' 和 'test' 两个键
-            device: 训练设备 ('cuda' 或 'cpu')
+        Args:
+            model: Model to train
+            dataloaders: Dictionary of dataloaders, containing 'train' and 'test' keys
+            device: Training device ('cuda' or 'cpu')
         """
         self.model = model.to(device)
         self.dataloaders = dataloaders
         self.device = device
         self.logger = logger
 
-        # 如果没有提供logger，创建一个简单的logger来模拟print行为
+        # If no logger provided, create a simple logger to simulate print behavior
 
-        # 确保模型有 output_dim 属性
+        # Ensure model has output_dim attribute
         if not hasattr(model, 'output_dim'):
             raise AttributeError("Model must have 'output_dim' attribute")
 
-        # 获取类别数
+        # Get number of classes
         self.num_classes = len(dataloaders['train'].dataset.classes)
         print(f"Number of classes: {self.num_classes}")
 
-        # 创建任务头
+        # Create task head
         self.task_head = nn.Linear(model.output_dim, self.num_classes).to(device)
 
-        # 定义损失函数和优化器
+        # Define loss function and optimizer
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = Adam(
             list(model.parameters()) + list(self.task_head.parameters()),
@@ -50,7 +50,7 @@ class SingleTaskTrainer:
         )
 
     def _output(self, message):
-        """统一的输出方法：如果有logger则使用logger，否则使用print"""
+        """Unified output method: use logger if available, otherwise use print"""
         if self.logger:
             self.logger.info(message)
         else:
@@ -58,7 +58,7 @@ class SingleTaskTrainer:
 
     def train_epoch(self):
         """
-        单个训练周期
+        Single training epoch
         """
         self.model.train()
         self.task_head.train()
@@ -92,7 +92,7 @@ class SingleTaskTrainer:
 
     def evaluate(self):
         """
-        模型评估
+        Model evaluation
         """
         self.model.eval()
         self.task_head.eval()
@@ -124,33 +124,33 @@ class SingleTaskTrainer:
 
     def train(self, epochs=10, save_path='best_model.pth'):
         """
-        训练模型并保存最佳权重
+        Train model and save best weights
 
-        参数:
-            epochs: 训练周期数
-            save_path: 最佳模型权重保存路径
-        返回:
-            best_accuracy: 最佳验证准确率
-            best_val_metrics: 最佳验证指标
-            history: 训练历史记录
-            best_model_state: 最佳模型状态字典
+        Args:
+            epochs: Number of training epochs
+            save_path: Path to save best model weights
+        Returns:
+            best_accuracy: Best validation accuracy
+            best_val_metrics: Best validation metrics
+            history: Training history
+            best_model_state: Best model state dictionary
         """
         best_accuracy = 0.0
-        best_val_metrics = None  # 保存最佳验证指标
+        best_val_metrics = None  # Save best validation metrics
         history = []
-        best_model_state = None  # 保存最佳模型状态
+        best_model_state = None  # Save best model state
 
         for epoch in range(epochs):
             # print(f"\nEpoch {epoch + 1}/{epochs}")
             self._output(f"\nEpoch {epoch + 1}/{epochs}")
 
-            # 训练阶段
+            # Training phase
             train_metrics = self.train_epoch()
 
-            # 验证阶段
+            # Validation phase
             val_metrics = self.evaluate()
 
-            # 保存历史
+            # Save history
             history.append({
                 'train': train_metrics,
                 'val': val_metrics
@@ -159,7 +159,7 @@ class SingleTaskTrainer:
             # print(f"\nValidation Accuracy: {val_metrics['accuracy']:.2f}%")
             self._output(f"\nValidation Accuracy: {val_metrics['accuracy']:.2f}%")
 
-            # 更新最佳模型
+            # Update best model
             if val_metrics['accuracy'] > best_accuracy:
                 best_accuracy = val_metrics['accuracy']
                 best_val_metrics = val_metrics
@@ -168,7 +168,7 @@ class SingleTaskTrainer:
                     'head': self.task_head.state_dict()
                 }
 
-            # 保存最佳模型权重到文件
+            # Save best model weights to file
             torch.save(best_model_state, save_path)
             # print(f"✅ Best model saved with accuracy: {best_accuracy:.2f}%")
             self._output(f"✅ Best model saved with accuracy: {best_accuracy:.2f}%")
@@ -182,18 +182,18 @@ class MultiTaskTrainer:
         
         self.device = device
 
-        # 确保模型有output_dim属性
+        # Ensure model has output_dim attribute
         if not hasattr(model, 'output_dim'):
             raise AttributeError("Model must have 'output_dim' attribute")
 
         
-        # 动态创建多任务头（根据数据集类别数）
+        # Dynamically create multi-task heads (based on dataset class counts)
         self.task_heads = nn.ModuleDict()
         for task_name, loaders in dataloaders.items():
             if loaders['train'] is None:
                 continue
                 
-            # 从数据集获取类别数
+            # Get number of classes from dataset
             num_classes = len(loaders['train'].dataset.classes)
             print(f"Creating task head for {task_name}: input_dim={model.output_dim}, output_dim={num_classes}")
             self.task_heads[task_name] = nn.Linear(model.output_dim, num_classes).to(device)
@@ -211,7 +211,7 @@ class MultiTaskTrainer:
             
         task_metrics = defaultdict(dict)
         
-        # 交替训练不同数据集
+        # Alternately train different datasets
         for task_name, loaders in self.dataloaders.items():
             if loaders['train'] is None:
                 continue
@@ -293,40 +293,40 @@ class MultiTaskTrainer:
     
     def train(self, epochs=10, save_path='best_model.pth', patience=5, min_delta=0.01):
         """
-        训练模型并保存最佳权重，支持早停机制。
+        Train model and save best weights, supports early stopping.
 
-        参数:
-            epochs: 最大训练周期数
-            save_path: 最佳模型权重保存路径
-            patience: 早停的容忍周期数
-            min_delta: 验证指标的最小变化量
-        返回:
-            best_avg_acc: 最佳平均验证准确率
-            best_val_metrics: 最佳验证指标
-            history: 训练历史记录
-            best_model_state: 最佳模型状态字典
+        Args:
+            epochs: Maximum number of training epochs
+            save_path: Path to save best model weights
+            patience: Tolerance epochs for early stopping
+            min_delta: Minimum change in validation metric
+        Returns:
+            best_avg_acc: Best average validation accuracy
+            best_val_metrics: Best validation metrics
+            history: Training history
+            best_model_state: Best model state dictionary
         """
         best_avg_acc = 0.0
-        best_val_metrics = None  # 用于保存最佳权重对应的验证准确率
+        best_val_metrics = None  # To save validation accuracy corresponding to best weights
         history = []
-        best_model_state = None  # 用于保存最佳模型状态
+        best_model_state = None  # To save best model state
 
         # Early stopping variables
-        no_improvement_epochs = 0  # 记录验证集指标未提升的连续周期数
+        no_improvement_epochs = 0  # Record consecutive epochs with no improvement in validation metric
         
         for epoch in range(epochs):
             print(f"\nEpoch {epoch+1}/{epochs}")
             
-            # 训练阶段
+            # Training phase
             train_metrics = self.train_epoch()
             
-            # 验证阶段
+            # Validation phase
             val_metrics = self.evaluate()
             
-            # 计算平均准确率
+            # Calculate average accuracy
             avg_acc = np.mean([m['accuracy'] for m in val_metrics.values()])
             # print("avg_acc:", avg_acc)
-            # 保存历史
+            # Save history
             history.append({
                 'train': train_metrics,
                 'val': val_metrics,
@@ -338,38 +338,38 @@ class MultiTaskTrainer:
                 print(f"{task}: {metrics['accuracy']:.2f}%")
             print(f"Average Accuracy: {avg_acc:.2f}%")
             
-            # # 更新最佳模型
+            # # Update best model
             # if avg_acc > best_avg_acc:
             #     best_avg_acc = avg_acc
-            #     best_val_metrics = val_metrics  # 保存最佳验证准确率对应的各任务指标
+            #     best_val_metrics = val_metrics  # Save metrics for each task corresponding to best val accuracy
             #     best_model_state = {
             #         'model': self.model.state_dict(),
             #         'heads': self.task_heads.state_dict()
             #     }
             
-            # # 保存最佳模型权重到文件
+            # # Save best model weights to file
             # torch.save(best_model_state, save_path)
             # print(f"✅ Best model saved with accuracy: {best_avg_acc:.2f}%")
             
-            # 检查是否为最佳模型
-            if avg_acc > best_avg_acc + min_delta:  # 验证集指标有显著提升
+            # Check if it is the best model
+            if avg_acc > best_avg_acc + min_delta:  # Significant improvement in validation metric
                 best_avg_acc = avg_acc
-                best_val_metrics = val_metrics  # 保存最佳验证准确率对应的各任务指标
+                best_val_metrics = val_metrics  # Save metrics for each task corresponding to best val accuracy
                 best_model_state = {
                     'model': self.model.state_dict(),
                     'heads': self.task_heads.state_dict()
                 }
                 
-                # 保存最佳模型权重到文件
+                # Save best model weights to file
                 torch.save(best_model_state, save_path)
                 print(f"✅ Best model saved with accuracy: {best_avg_acc:.2f}%")
 
-                no_improvement_epochs = 0  # 重置早停计数器
+                no_improvement_epochs = 0  # Reset early stopping counter
             else:
-                no_improvement_epochs += 1  # 验证集指标未提升，增加计数器
+                no_improvement_epochs += 1  # No improvement in validation metric, increment counter
                 print(f"⚠️ No improvement for {no_improvement_epochs} epoch(s).")
 
-            # 检查是否触发早停
+            # Check if early stopping is triggered
             if no_improvement_epochs >= patience:
                 print(f"⏹️ Early stopping triggered. No improvement for {patience} consecutive epochs.")
                 break

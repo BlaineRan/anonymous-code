@@ -8,53 +8,53 @@ from nas import MemoryEstimator
 import time
 
 class LLMExpander:
-    """基于LLM的架构扩展器，负责生成新的架构"""
+    """LLM-based architecture expander, responsible for generating new architectures"""
     
     def __init__(self, llm_config: Dict[str, Any], search_space: Dict[str, Any], dataset_info: Dict[str, Any] = None, mcts_graph=None):
         self.llm = initialize_llm(llm_config)
         self.search_space = search_space
-        self.dataset_info = dataset_info or {}  # 新增：存储数据集信息
+        self.dataset_info = dataset_info or {}  # New: Store dataset info
         self.max_retries = 3
-        self.mcts_graph = mcts_graph  # 新增：需要图结构来获取关系信息
+        self.mcts_graph = mcts_graph  # New: Need graph structure to get relationship info
         
     def set_mcts_graph(self, mcts_graph):
-        """设置MCTS图结构引用"""
+        """Set MCTS graph structure reference"""
         self.mcts_graph = mcts_graph
 
     def set_dataset_info(self, dataset_info: Dict[str, Any]):
-        """设置数据集信息"""
+        """Set dataset information"""
         self.dataset_info = dataset_info
         
     def expand_from_parent(self, parent_node: ArchitectureNode, dataset_name: str, 
                           dataset_info: Dict[str, Any], pareto_feedback: str, 
                           constraint_feedback: Optional[str] = None,
-                          global_successes: List[Dict] = None,  # 新增参数
+                          global_successes: List[Dict] = None,  # New parameter
                           global_failures: List[Dict] = None) -> Optional[CandidateModel]:
-        """基于 父节点 和 反馈生成新的架构"""
+        """Generate new architecture based on parent node and feedback"""
         
-        # 收集当前会话的约束违反历史
+        # Collect constraint violation history for current session
         session_failures = []
         validation_feedback = constraint_feedback
 
         for attempt in range(self.max_retries):
             try:
-                print(f"🤖 LLM扩展尝试 {attempt + 1}/{self.max_retries}")
+                print(f"🤖 LLM expansion attempt {attempt + 1}/{self.max_retries}")
                 
-                # 构建扩展上下文
+                # Build expansion context
                 context = self._build_expansion_context(parent_node, dataset_name, dataset_info, pareto_feedback,
                                                         validation_feedback, session_failures,
-                                                        global_successes, global_failures  # 传递全局经验
+                                                        global_successes, global_failures  # Pass global experience
                                                         )
                 print(f"context is over.\n")
-                # 生成扩展提示
+                # Generate expansion prompt
                 prompt = self._build_expansion_prompt(context)
                 
                 print(f"prompt is over.\n")
-                # 调用LLM
+                # Call LLM
                 response = self.llm.invoke(prompt).content
-                print(f"LLM响应:\n {response}")
+                print(f"LLM Response:\n {response}")
                 
-                # 解析响应
+                # Parse response
                 candidate = self._parse_llm_response(response)
                 if candidate is None:
                     session_failures.append({
@@ -64,10 +64,10 @@ class LLMExpander:
                     })
                     continue
 
-                # 验证约束条件
+                # Validate constraints
                 is_valid, failure_reason, suggestions = self._validate_candidate(candidate, dataset_name)
                 if not is_valid:
-                    # 验证失败，更新反馈并继续尝试
+                    # Validation failed, update feedback and retry
                     validation_feedback = f"""CONSTRAINT VIOLATION DETECTED IN ATTEMPT {attempt + 1}:
                     - Issue: {failure_reason}
                     - Suggestions: {suggestions}
@@ -79,21 +79,21 @@ class LLMExpander:
                         'failure_type': 'constraint_violation',
                         'failure_reason': failure_reason,
                         'suggestions': suggestions,
-                        'config': candidate.config  # 添加失败的配置
+                        'config': candidate.config  # Add failed config
                     })
-                    print(f"⚠️ 架构验证失败 (尝试 {attempt + 1}): {failure_reason}")
+                    print(f"⚠️ Architecture validation failed (Attempt {attempt + 1}): {failure_reason}")
                     
                     continue
                 
-                print(f"✅ 生成有效架构 (尝试 {attempt + 1})")
-                # 验证通过，记录成功修改到父节点
+                print(f"✅ Generated valid architecture (Attempt {attempt + 1})")
+                # Validation passed, record successful modification to parent node
                 # self._record_successful_modification(parent_node, candidate, attempt)
                 return candidate
                     
             except Exception as e:
-                print(f"LLM扩展失败: {str(e)}")
+                print(f"LLM expansion failed: {str(e)}")
 
-            # 如果解析失败，记录为会话失败（可以添加更具体的失败原因）
+            # If parsing failed, record as session failure (can add more specific failure reasons)
             session_failures.append({
                 'attempt': attempt + 1,
                 'failure_type': 'parsing_failed',
@@ -103,17 +103,17 @@ class LLMExpander:
         return None
     
     # def _validate_candidate(self, candidate: CandidateModel, dataset_name: str) -> tuple:
-    #     """验证候选架构的约束条件"""
+    #     """Validate candidate architecture constraints"""
     #     violations = []
     #     suggestions = []
         
-    #     # 获取数据集信息
+    #     # Get dataset info
     #     if dataset_name not in self.dataset_info:
-    #         return True, "", ""  # 如果没有数据集信息，跳过验证
+    #         return True, "", ""  # If no dataset info, skip validation
             
     #     dataset_info = self.dataset_info[dataset_name]
         
-    #     # 计算内存使用量
+    #     # Calculate memory usage
     #     memory_usage = calculate_memory_usage(
     #         candidate.build_model(),
     #         input_size=(64, dataset_info['channels'], dataset_info['time_steps']),
@@ -124,92 +124,25 @@ class LLMExpander:
     #     parameter_memory_mb = memory_usage['parameter_memory_MB']
     #     total_memory_mb = memory_usage['total_memory_MB']
         
-    #     # 设置候选模型的内存信息
+    #     # Set candidate model memory info
     #     candidate.estimate_total_size = total_memory_mb
     #     candidate.metadata['activation_memory_MB'] = activation_memory_mb
     #     candidate.metadata['parameter_memory_MB'] = parameter_memory_mb
     #     candidate.metadata['estimated_total_size_MB'] = total_memory_mb
-
-    #     # 如果量化模式为 static，则将内存估算值除以 4
-    #     quant_mode = candidate.config.get('quant_mode', 'none')
-    #     if quant_mode == 'static':
-    #         print(f"⚙️ 检测到静态量化模式，内存将按 1/4 进行调整")
-    #         total_memory_mb /= 4
-    #         activation_memory_mb /= 4
-    #         parameter_memory_mb /= 4
-        
-    #     # 检查内存约束
-    #     max_peak_memory = float(self.search_space['constraints'].get('max_peak_memory', float('inf'))) / 1e6
-    #     estimated_total_size_status = f"Estimated Total Size: {total_memory_mb:.2f}MB"
-        
-    #     if total_memory_mb > 4 * max_peak_memory:
-    #         estimated_total_size_status += f" (Exceeding 4x the maximum value {4 * max_peak_memory:.2f}MB)"
-    #         violations.append(estimated_total_size_status)
-    #         suggestions.append("- Reduce the number of stages\n"
-    #                            "- Reduce model size by removing redundant blocks\n"
-    #                            "- Reduce channel distribution in later stages\n"
-    #                            "- Use more efficient pooling layers\n"
-    #                            "- Consider quantization or pruning")
-            
-    #         print(f"\n-------------------\n❌ 架构被拒绝: 内存使用量 {total_memory_mb:.2f}MB 超过4倍限制 {4 * max_peak_memory:.2f}MB")
-            
-    #     elif total_memory_mb > max_peak_memory:
-    #         estimated_total_size_status += f" (Exceeding the maximum value {max_peak_memory:.2f}MB, but within 4x)"
-    #         violations.append(estimated_total_size_status)
-    #         suggestions.append("- Consider applying quantization to reduce memory usage.\n"
-    #                            "- Reducing the number of stages is the most significant method.\n"
-    #                            '- Besides, you can replace MBConv with DWSeqConv, which is the most effective method!\n'
-    #                            '- I must emphasize again that it is a good practice to replace MBConv with DWSeqConv when you do not want to modify the stage.\n'
-    #                            "- If the memory exceeds the limit by a small amount, you can also reduce the channel size.")
-    #         estimated_total_size_status += " (The total memory exceeds the maximum value, but does not exceed four times; perhaps it can meet the requirements through quantization.)"
-    #         print(f"\n-------------------\n❌ 架构被拒绝: 内存使用量 {total_memory_mb:.2f}MB 小于4倍限制 {4 * max_peak_memory:.2f}MB")
-    #         # # 强制启用静态量化
-    #         # if candidate.config.get('quant_mode', 'none') == 'none':
-    #         #     print("\n=================================\n⚠️ 强制启用静态量化以满足内存约束\n")
-    #         #     print(f"原始内存: {total_memory_mb:.2f}MB > 限制: {max_peak_memory:.2f}MB")
-    #         #     candidate.config['quant_mode'] = 'static'
-    #         #     candidate.metadata['quantization_mode'] = 'static'
-    #         #     suggestions.append("- Quantization mode has been set to 'static' to meet memory constraints")
-    #     else:
-    #         estimated_total_size_status += " (Compliant with constraints)"
-
-    #     # 检查延迟约束
-    #     latency = candidate.measure_latency(device='cpu', dataset_names=dataset_name)
-    #     max_latency = float(self.search_space['constraints'].get('max_latency', float('inf')))
-    #     latency_status = f"Latency: {latency:.2f}ms"
-        
-    #     if latency > max_latency:
-    #         latency_status += f" (Exceeding the maximum value {max_latency:.2f}ms)"
-    #         violations.append(latency_status)
-    #         suggestions.append("- Optimize convolution operations\n"
-    #                            "- Reduce the number of blocks in each stage\n"
-    #                            "- Use depthwise separable convolutions\n"
-    #                            "- Consider model quantization")
-    #     else:
-    #         latency_status += " (Compliant with constraints)"
-        
-    #     # 打印验证结果
-    #     print("\n---- 约束验证结果 ----")
-    #     print(f"estimated_total_size_MB: {total_memory_mb} MB")
-    #     print(f"latency_status: {latency} ms")
-    #     print("----------------------")
-        
-    #     if violations:
-    #         return False, " | ".join(violations), "\n".join(suggestions)
-    #     return True, "", ""
+    #     ...
     
     def _validate_candidate(self, candidate: CandidateModel, dataset_name: str) -> tuple:
-        """验证候选架构的约束条件"""
+        """Validate candidate architecture constraints"""
         violations = []
         suggestions = []
         
-        # 获取数据集信息
+        # Get dataset info
         if dataset_name not in self.dataset_info:
-            return True, "", ""  # 如果没有数据集信息，跳过验证
+            return True, "", ""  # If no dataset info, skip validation
             
         dataset_info = self.dataset_info[dataset_name]
         
-        # 计算内存使用量
+        # Calculate memory usage
         memory_usage = calculate_memory_usage(
             candidate.build_model(),
             input_size=(64, dataset_info['channels'], dataset_info['time_steps']),
@@ -220,32 +153,32 @@ class LLMExpander:
         parameter_memory_mb = memory_usage['parameter_memory_MB']
         total_memory_mb = memory_usage['total_memory_MB']
         
-        # 设置候选模型的内存信息
+        # Set candidate model memory info
         candidate.estimate_total_size = total_memory_mb
         candidate.metadata['activation_memory_MB'] = activation_memory_mb
         candidate.metadata['parameter_memory_MB'] = parameter_memory_mb
         candidate.metadata['estimated_total_size_MB'] = total_memory_mb
 
-        # 获取约束限制
+        # Get constraint limits
         max_peak_memory = float(self.search_space['constraints'].get('max_peak_memory', float('inf'))) / 1e6
         quant_mode = candidate.config.get('quant_mode', 'none')
 
-        # 如果量化模式为 static，则将内存估算值除以 4
-        # 修正：根据量化模式调整有效内存使用量和限制
+        # If quantization mode is static, divide memory estimate by 4
+        # Fix: Adjust effective memory usage and limit based on quantization mode
         if quant_mode == 'static':
-            effective_memory = total_memory_mb / 4  # 量化后内存为原来的1/4
-            effective_limit = max_peak_memory  # 最终限制保持不变
-            memory_context = f"量化前: {total_memory_mb:.2f}MB → 量化后: {effective_memory:.2f}MB"
-            print(f"⚙️ 静态量化模式: {memory_context}")
+            effective_memory = total_memory_mb / 4  # Quantized memory is 1/4 of original
+            effective_limit = max_peak_memory  # Final limit remains unchanged
+            memory_context = f"Before Quant: {total_memory_mb:.2f}MB → After Quant: {effective_memory:.2f}MB"
+            print(f"⚙️ Static Quantization Mode: {memory_context}")
         else:
             effective_memory = total_memory_mb
             effective_limit = max_peak_memory
-            memory_context = f"无量化: {effective_memory:.2f}MB"
+            memory_context = f"No Quantization: {effective_memory:.2f}MB"
         
-        # 检查内存约束 - 使用有效内存和限制
+        # Check memory constraints - use effective memory and limit
         estimated_total_size_status = f"Estimated Total Size: {memory_context}"
         
-        # 修正约束检查逻辑
+        # Fix constraint check logic
         if effective_memory > 4 * effective_limit:
             estimated_total_size_status += f" (Exceeding 4x the maximum value {4 * effective_limit:.2f}MB)"
             violations.append(estimated_total_size_status)
@@ -253,7 +186,7 @@ class LLMExpander:
                             "- Reduce model size by removing redundant blocks\n" 
                             "- Consider quantization\n"
                             "- Use DWSeqConv instead of MBConv.")
-            print(f"❌ 架构被拒绝: 有效内存 {effective_memory:.2f}MB 超过4倍限制")
+            print(f"❌ Architecture rejected: Effective memory {effective_memory:.2f}MB exceeds 4x limit")
             
         elif effective_memory > effective_limit:
             estimated_total_size_status += f" (Exceeding the maximum value {effective_limit:.2f}MB, but within 4x)"
@@ -269,12 +202,12 @@ class LLMExpander:
                                 "- For both DWSeqConv and MBConv, the number of channels can be appropriately reduced kernel size.\n"
                                 "- Among them, MBConv can also reduce expansion appropriately! "
                                 "(However, please note that when expansion=1, MBConv will have the same effect as DWSeqConv)")
-            print(f"⚠️ 架构需要优化: 有效内存 {effective_memory:.2f}MB 超过限制")
+            print(f"⚠️ Architecture needs optimization: Effective memory {effective_memory:.2f}MB exceeds limit")
         else:
             estimated_total_size_status += " (Compliant with constraints)"
-            print(f"✅ 内存约束检查通过: {memory_context}")
+            print(f"✅ Memory constraint check passed: {memory_context}")
 
-        # 检查延迟约束
+        # Check latency constraints
         latency = candidate.measure_latency(device='cpu', dataset_names=dataset_name)
         max_latency = float(self.search_space['constraints'].get('max_latency', float('inf')))
         latency_status = f"Latency: {latency:.2f}ms"
@@ -289,8 +222,8 @@ class LLMExpander:
         else:
             latency_status += " (Compliant with constraints)"
         
-        # 打印验证结果
-        print("\n---- 约束验证结果 ----")
+        # Print validation results
+        print("\n---- Constraint Validation Results ----")
         print(f"estimated_total_size_MB: {total_memory_mb} MB")
         print(f"latency_status: {latency} ms")
         print("----------------------")
@@ -301,12 +234,12 @@ class LLMExpander:
     
 
     def _build_expansion_context(self, parent_node: ArchitectureNode, dataset_name: str,
-                               dataset_info: Dict[str, Any], pareto_feedback: str,
-                               constraint_feedback: Optional[str] = None, 
-                               session_failures: List[Dict] = None,
-                               global_successes: List[Dict] = None,  # 新增参数
-                               global_failures: List[Dict] = None) -> Dict[str, Any]:
-        """构建扩展上下文"""
+                                dataset_info: Dict[str, Any], pareto_feedback: str,
+                                constraint_feedback: Optional[str] = None, 
+                                session_failures: List[Dict] = None,
+                                global_successes: List[Dict] = None,  # New parameter
+                                global_failures: List[Dict] = None) -> Dict[str, Any]:
+        """Build expansion context"""
         context = {
             'dataset_name': dataset_name,
             'dataset_info': dataset_info,
@@ -316,7 +249,7 @@ class LLMExpander:
             'session_failures': session_failures or []
         }
         
-        # 添加父节点信息
+        # Add parent node info
         if parent_node.candidate is not None:
             print(f"not none\n{'-' * 20}\nparent_node.candidate: {parent_node.candidate}")
             context['parent_architecture'] = {
@@ -326,19 +259,19 @@ class LLMExpander:
                     'memory_usage': parent_node.memory_usage,
                     'latency': parent_node.latency,
                     'quantization_mode': parent_node.quantization_mode,
-                    # 确保量化准确率是 数值 或 None
+                    # Ensure quantized accuracy is number or None
                     'quantized_accuracy': parent_node.quantized_accuracy if parent_node.quantized_accuracy is not None else None,
                     'quantized_memory': parent_node.quantized_memory,
                     'quantized_latency': parent_node.quantized_latency
                 },
                 'mcts_stats': {
                     'visits': parent_node.visits,
-                    'score': parent_node.score,  # 修改：使用 score 替代 average_reward
-                    'is_evaluated': parent_node.is_evaluated  # 新增：是否已评估
+                    'score': parent_node.score,  # Modify: use score instead of average_reward
+                    'is_evaluated': parent_node.is_evaluated  # New: whether evaluated
                 }
             }
         
-        # # 修改：通过图结构获取搜索路径信息
+        # # Modify: Get search path info via graph structure
         # if self.mcts_graph:
         #     path = self.mcts_graph.get_node_lineage(parent_node.node_id)
         #     context['search_path'] = []
@@ -349,10 +282,10 @@ class LLMExpander:
         #                 'config': node.candidate.config,
         #                 'accuracy': node.accuracy,
         #                 'memory': node.memory_usage,
-        #                 'score': node.score  # 修改：使用score替代reward
+        #                 'score': node.score  # Modify: use score instead of reward
         #             })
         
-        # # 修改：通过图结构获取兄弟节点信息
+        # # Modify: Get sibling node info via graph structure
         # if self.mcts_graph:
         #     parent_of_current = self.mcts_graph.get_parent(parent_node.node_id)
         #     if parent_of_current:
@@ -362,21 +295,21 @@ class LLMExpander:
         #             if sibling.candidate is not None and sibling.node_id != parent_node.node_id:
         #                 context['sibling_architectures'].append({
         #                     'config': sibling.candidate.config,
-        #                     'score': sibling.score  # 修改：使用score替代reward
+        #                     'score': sibling.score  # Modify: use score instead of reward
         #                 })
         
-        # 使用全局经验而不是父节点的经验
+        # Use global experience instead of parent node experience
         context['experience'] = {
-            'successful_modifications': (global_successes or [])[-3:],  # 最近3条全局成功经验
-            'failed_modifications': (global_failures or [])[-3:]        # 最近3条全局失败经验
+            'successful_modifications': (global_successes or [])[-3:],  # Last 3 global successful experiences
+            'failed_modifications': (global_failures or [])[-3:]        # Last 3 global failed experiences
         }
         
         return context
     
     def _build_expansion_prompt(self, context: Dict[str, Any]) -> str:
-        """构建LLM扩展提示"""
+        """Build LLM expansion prompt"""
         dataset_info = context['dataset_info']
-        # 准备父节点信息
+        # Prepare parent node info
         parent_info = "None"
         if 'parent_architecture' in context:
             parent = context['parent_architecture']
@@ -390,7 +323,7 @@ class LLMExpander:
             - Evaluated: {parent['mcts_stats']['is_evaluated']}
             - Configuration: {json.dumps(parent['config'], indent=2)}"""
 
-            # 如果架构开启了量化，补充量化前后的准确率对比
+            # If architecture enabled quantization, supplement accuracy comparison before and after quantization
             if parent['performance']['quantization_mode'] != 'none':
                 quantized_accuracy = parent['performance'].get('quantized_accuracy', 'N/A')
                 if isinstance(quantized_accuracy, (int, float)):
@@ -404,19 +337,19 @@ class LLMExpander:
                     - Accuracy Drop: N/A
                     """
         
-        # 添加Pareto前沿反馈 （保持不变）
+        # Add Pareto frontier feedback (keep unchanged)
         if context['pareto_feedback']:
             feedback = context.get('pareto_feedback', "No Pareto frontier feedback")
         # print(f"feedback: {feedback}")
-        # # 准备失败案例信息
+        # # Prepare failure case info
 
-        # 修正：准备失败案例信息 - 关注性能下降的修改
+        # Fix: Prepare failure case info - focus on modifications with performance degradation
         failure_feedback = "None"
         if 'experience' in context and context['experience']['failed_modifications']:
             last_failures = context['experience']['failed_modifications'][-3:]
             failure_cases = []
             for f in last_failures:
-                # 只处理架构扩展类型的失败 （性能下降）
+                # Only handle architecture expansion type failures (performance degradation)
                 if f.get('type') == 'arch_expansion' and f.get('result_type') == 'failure':
                     case_info = f"- Score Change: {f.get('improvement', 0):.3f} (decreased)"
                     if 'config_diff' in f:
@@ -429,13 +362,13 @@ class LLMExpander:
             if failure_cases:
                 failure_feedback = "\n".join(failure_cases)
 
-        # 修正：准备成功案例信息 - 关注性能提升的修改
+        # Fix: Prepare success case info - focus on modifications with performance improvement
         success_feedback = "None"
         if 'experience' in context and context['experience']['successful_modifications']:
             last_successes = context['experience']['successful_modifications'][-3:]
             success_cases = []
             for s in last_successes:
-                # 只处理架构扩展类型的成功 （性能提升）
+                # Only handle architecture expansion type successes (performance improvement)
                 if s.get('type') == 'arch_expansion' and s.get('result_type') == 'success':
                     case_info = f"- Score Change: {s.get('improvement', 0):.3f} (improved)"
                     if 'config_diff' in s:
@@ -452,7 +385,7 @@ class LLMExpander:
                 success_feedback = "\n".join(success_cases)
         
         
-        # 当前会话的约束违反反馈（这个很重要！）
+        # Current session constraint violation feedback (This is important!)
         session_constraint_feedback = "None"
         if context.get('session_failures'):
             feedback_items = []
@@ -463,17 +396,17 @@ class LLMExpander:
                 if failure.get('suggestions'):
                     item += f"\n  - Fix: {failure['suggestions']}"
                 if failure.get('config'):
-                    # 简要总结失败的配置
+                    # Briefly summarize failed config
                     # item += f"\n  - Failed config: {len(failure['config'].get('stages', []))} stages"
                     item += f"\n -Config: {failure['config']}"
                 feedback_items.append(item)
             session_constraint_feedback = "\n".join(feedback_items)
         
-        # 新增：来自验证器的即时约束反馈
+        # New: Immediate constraint feedback from validator
         immediate_constraint_feedback = context.get('constraint_feedback', "None")
     
 
-        # 添加约束条件（保持不变）
+        # Add constraints (keep unchanged)
         constraints = {
             'max_sram': float(self.search_space['constraints']['max_sram']) / 1024,
             'min_macs': float(self.search_space['constraints']['min_macs']) / 1e6,
@@ -484,9 +417,9 @@ class LLMExpander:
         }
         # print(f"constraints: {constraints}")
         max_peak_memory = str(constraints['max_peak_memory'])
-        quant_max_memory = str(constraints['max_peak_memory'] * 4)  # 量化后内存限制为4倍
-        expected_memory = str(constraints['max_peak_memory'] * 0.75)  # 期望内存为3倍
-        expected_quant_memory = str(constraints['max_peak_memory'] * 3)  # 期望内存为4倍
+        quant_max_memory = str(constraints['max_peak_memory'] * 4)  # Quantized memory limit is 4x
+        expected_memory = str(constraints['max_peak_memory'] * 0.75)  # Expected memory is 0.75x
+        expected_quant_memory = str(constraints['max_peak_memory'] * 3)  # Expected quantized memory is 3x
         prompt = """
             You are a neural architecture optimization expert. Based on the search context, generate a NEW architecture that improves upon the parent architecture.
 
@@ -623,14 +556,14 @@ class LLMExpander:
                     parent_performance=parent_info
                 )
         
-        print(f"生成的提示:\n{prompt}\n")
+        print(f"Generated Prompt:\n{prompt}\n")
 
         return prompt
     
     def _parse_llm_response(self, response: str) -> Optional[CandidateModel]:
-        """解析LLM响应为CandidateModel（保持不变）"""
+        """Parse LLM response to CandidateModel (keep unchanged)"""
         try:
-            # 提取JSON配置
+            # Extract JSON config
             json_match = re.search(r'```json(.*?)```', response, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1).strip()
@@ -641,34 +574,34 @@ class LLMExpander:
                 else:
                     return None
             
-            # 解析JSON
+            # Parse JSON
             config = json.loads(json_str)
             
-            # 验证必要字段
+            # Validate required fields
             if not all(k in config for k in ['stages', 'input_channels', 'num_classes']):
-                print("⚠️ 配置缺少必要字段")
+                print("⚠️ Config missing required fields")
                 return None
             
-            # 创建候选模型
+            # Create candidate model
             candidate = CandidateModel(config=config)
             candidate.metadata['quantization_mode'] = config.get('quant_mode', 'none')
             
             return candidate
             
         except Exception as e:
-            print(f"解析LLM响应失败: {str(e)}")
+            print(f"Failed to parse LLM response: {str(e)}")
             return None
         
     def _record_successful_modification(self, parent_node: ArchitectureNode, 
                                      candidate: CandidateModel, attempt: int):
-        """记录成功的修改到父节点"""
+        """Record successful modification to parent node"""
         modification = {
             'type': 'llm_expansion',
             'config': candidate.config,
             'attempt': attempt,
             'timestamp': time.time()
         }
-        # print(f"\n=== 成功的 modification 内容 ===")
+        # print(f"\n=== Successful modification content ===")
         # print(json.dumps(modification, indent=2, default=str))
         # print("=" * 40)
         parent_node.record_modification(modification, success=True)
@@ -676,7 +609,7 @@ class LLMExpander:
     def _record_failed_modification(self, parent_node: ArchitectureNode, 
                                   candidate: CandidateModel, failure_reason: str, 
                                   suggestions: str, attempt: int):
-        """记录失败的修改到父节点"""
+        """Record failed modification to parent node"""
         modification = {
             'type': 'llm_expansion',
             'config': candidate.config,
@@ -685,7 +618,7 @@ class LLMExpander:
             'attempt': attempt,
             'timestamp': time.time()
         }
-        # print(f"\n=== 失败的 modification 内容 ===")
+        # print(f"\n=== Failed modification content ===")
         # print(json.dumps(modification, indent=2, default=str))
         # print("=" * 40)
         parent_node.record_modification(modification, success=False)

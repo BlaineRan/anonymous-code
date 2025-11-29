@@ -4,18 +4,18 @@ import math
 from models import CandidateModel
 
 class ArchitectureNode:
-    """MCTS树中的架构节点，每个节点代表一个完整的模型架构"""
+    """Architecture node in the MCTS tree, each representing a full model architecture"""
     
     def __init__(self, node_id: str, candidate: Optional[CandidateModel] = None):
-        self.node_id = node_id  # 唯一标识符
-        self.candidate = candidate  # 完整的模型架构
+        self.node_id = node_id  # Unique identifier
+        self.candidate = candidate  # Full model architecture
         self.children: List['ArchitectureNode'] = []
         
-        # MCTS统计信息
+        # MCTS statistics
         self.visits = 0
-        self.score = 0.0  # 节点的单次评估得分
+        self.score = 0.0  # Single evaluation score of the node
         
-        # 架构性能信息
+        # Architecture performance information
         self.accuracy = 0.0
         self.memory_usage = 0.0
         self.latency = 0.0
@@ -24,28 +24,28 @@ class ArchitectureNode:
         self.proxy_score = 0.0
         self.raw_score = None
         
-        # 量化相关
+        # Quantization related information
         self.quantization_mode = 'none'
         self.quantized_accuracy = None
         self.quantized_memory = None
         self.quantized_latency = None
         
-        # 经验信息
-        self.success_modifications = []  # 成功的修改记录
-        self.failure_modifications = []  # 失败的修改记录
+        # Experience information
+        self.success_modifications = []  # Records of successful modifications
+        self.failure_modifications = []  # Records of failed modifications
         self.is_evaluated = False
 
-        # 创建时间戳，用于排序和选择
+        # Creation timestamp for ordering and selection
         import time
         self.created_time = time.time()
 
-        # === 新增：方向相关属性 ===
-        self.direction = None  # 当前节点使用的量化方向
-        self.directions = []   # 可用的方向列表（如：["none", "static", "qat"]）
-        self.direction_visits = {}  # 每个方向的访问次数
-        self.direction_scores = {}  # 每个方向的平均得分
+        # === Added: direction-related attributes ===
+        self.direction = None  # Quantization direction applied to the current node
+        self.directions = []   # Available direction list (e.g., ["none", "static", "qat"])
+        self.direction_visits = {}  # Visit counts for each direction
+        self.direction_scores = {}  # Average score for each direction
 
-        # 初始化方向（如果提供了候选模型）
+        # Initialize direction (if the candidate model specifies one)
         # if candidate and 'quantization_mode' in candidate.metadata:
         #     self.direction = candidate.metadata['quantization_mode']
         if candidate and 'quant_mode' in candidate.config:
@@ -53,7 +53,7 @@ class ArchitectureNode:
 
     def update_evaluation(self, score: float, accuracy: float = 0.0, 
                          memory_usage: float = 0.0, latency: float = 0.0):
-        """更新节点的评估结果"""
+        """Update the node's evaluation results"""
         self.score = score
         self.accuracy = accuracy
         self.memory_usage = memory_usage
@@ -61,11 +61,11 @@ class ArchitectureNode:
         self.is_evaluated = True
     
     def increment_visits(self):
-        """增加访问次数"""
+        """Increase the visit count"""
         self.visits += 1
         
     def get_effective_metrics(self):
-        """获取有效的性能指标（优先量化指标）"""
+        """Retrieve effective performance metrics (prefer quantized metrics)"""
         if (self.quantization_mode != 'none' and 
             self.quantized_accuracy is not None):
             return {
@@ -84,7 +84,7 @@ class ArchitectureNode:
 
     
     # def get_ucb_score(self, exploration_weight: float = 1.414) -> float:
-    #     """计算UCB分数用于节点选择"""
+    #     """Compute UCB score for node selection"""
     #     if self.visits == 0:
     #         return float('inf')
         
@@ -96,14 +96,14 @@ class ArchitectureNode:
     #     return exploitation + exploration
     
     def record_modification(self, modification: Dict[str, Any], success: bool):
-        """记录架构修改的结果"""
+        """Record the outcome of an architecture modification"""
         if success:
             self.success_modifications.append(modification)
         else:
             self.failure_modifications.append(modification)
     
     def get_node_info(self) -> Dict[str, Any]:
-        """获取节点的完整信息"""
+        """Retrieve the complete information of this node"""
         return {
             'node_id': self.node_id,
             'config': self.candidate.config if self.candidate else None,

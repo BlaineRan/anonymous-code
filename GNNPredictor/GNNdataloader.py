@@ -1,5 +1,7 @@
 from torch_geometric.data import Dataset
 import torch
+from torch_geometric.data import Dataset
+import torch
 import json
 import os
 import random
@@ -8,15 +10,15 @@ from sklearn.model_selection import train_test_split
 class ArchitectureDataset(Dataset):
     def __init__(self, root_dir, encoder, subset="train", transform=None, pre_transform=None, seed=42):
         """
-        ArchitectureDataset: 用于加载架构数据的 PyTorch Geometric 数据集。
+        ArchitectureDataset: PyTorch Geometric dataset for loading architecture data.
 
         Args:
-            root_dir (str): 数据集根目录。
-            encoder (object): 用于将 config 转换为图的编码器。
-            subset (str): 数据子集，选择 "train", "test" 或 "val"。
-            transform (callable, optional): 数据变换。
-            pre_transform (callable, optional): 预处理变换。
-            seed (int): 随机种子。
+            root_dir (str): Dataset root directory.
+            encoder (object): Encoder for converting config to graph.
+            subset (str): Data subset, choose "train", "test" or "val".
+            transform (callable, optional): Data transformation.
+            pre_transform (callable, optional): Preprocessing transformation.
+            seed (int): Random seed.
         """
         super().__init__(root_dir, transform, pre_transform)
         self.encoder = encoder
@@ -31,8 +33,8 @@ class ArchitectureDataset(Dataset):
         self.subset = subset
         self.seed = seed
         
-        # 加载数据并进行分层抽样
-        # 加载性能数据
+        # Load data and perform stratified sampling
+        # Load performance data
         self.architectures = []
         # self.accuracies = []
         self.original_accuracies  = []
@@ -43,7 +45,7 @@ class ArchitectureDataset(Dataset):
     
     def _load_and_split_data(self):
         """
-        加载数据并进行分层抽样，将数据划分为 train/test/val。
+        Load data and perform stratified sampling, splitting data into train/test/val.
         """
         all_data = {"train": [], "test": [], "val": []}
 
@@ -52,12 +54,12 @@ class ArchitectureDataset(Dataset):
             with open(file_path, 'r') as f:
                 for line in f:
                     data = json.loads(line)
-                    # 构建 encoder 期望的 config 格式
+                    # Construct the config format expected by the encoder
                     config = {
                         "input_channels": data['input_channels'],
                         "num_classes": data['num_classes'],
                         "quant_mode": "none",
-                        "stages": data['stages']  # 保持 stages 字段不变
+                        "stages": data['stages']  # Keep the stages field unchanged
                     }
                     stage_data.append({
                         "config": config,
@@ -66,7 +68,7 @@ class ArchitectureDataset(Dataset):
                         "qat_accuracy": data['qat_quantized_accuracy']
                     })
 
-            # 分层抽样
+            # Stratified sampling
             train_data, temp_data = train_test_split(
                 stage_data, test_size=0.25, random_state=self.seed
             )
@@ -78,7 +80,7 @@ class ArchitectureDataset(Dataset):
             all_data["test"].extend(test_data)
             all_data["val"].extend(val_data)
 
-        # 根据子集选择数据
+        # Select data based on subset
         subset_data = all_data[self.subset]
         for item in subset_data:
             self.architectures.append(item["config"])
@@ -96,15 +98,15 @@ class ArchitectureDataset(Dataset):
         quantized_accuracy = self.quantized_accuracies[idx]
         qat_accuracy = self.qat_accuracies[idx]
         
-        # 将config转换为图
+        # Convert config to graph
         graph_data = self.encoder.config_to_graph(config)
         
-        # 添加目标值（准确性）
+        # Add target values (accuracy)
         # graph_data.y = torch.tensor([accuracy], dtype=torch.float)
-        # 添加两个目标值（原始准确率和量化准确率）
+        # Add two target values (original accuracy and quantized accuracy)
         graph_data.y = torch.tensor([original_accuracy, quantized_accuracy, qat_accuracy], dtype=torch.float)
 
-        # 添加 stage 数量到 graph_data
-        graph_data.stage_count = len(config['stages'])  # 直接从 config['stages'] 获取 stage 数量
+        # Add stage count to graph_data
+        graph_data.stage_count = len(config['stages'])  # Get stage count directly from config['stages']
         
         return graph_data

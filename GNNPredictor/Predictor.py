@@ -11,19 +11,19 @@ class GNNPredictor(nn.Module):
         self.convs = nn.ModuleList()
         self.bns = nn.ModuleList()
         
-        # 首先将输入特征投影到 hidden_dim
+        # First project node features into hidden_dim
         self.input_proj = nn.Linear(input_dim, hidden_dim)
         
-        # 添加 GNN 层
+        # Add the GNN layers
         for i in range(num_layers):
             self.convs.append(GATConv(hidden_dim, hidden_dim, heads=4, concat=False, dropout=dropout))
             # self.bns.append(nn.BatchNorm1d(hidden_dim))
             self.bns.append(BatchNorm(hidden_dim))
         
         self.dropout = dropout
-        # 全局池化后预测
+        # Predict after global pooling
         self.pool = global_mean_pool
-        # 三个输出头：一个用于原始准确率，一个用于量化准确率
+        # Three heads: original accuracy, quantized accuracy, and QAT accuracy
         # self.fc_out = nn.Sequential(
         #     nn.Linear(hidden_dim, hidden_dim // 2),
         #     nn.ReLU(),
@@ -61,10 +61,10 @@ class GNNPredictor(nn.Module):
             x = F.relu(bn(conv(x, edge_index)))
             x = F.dropout(x, p=self.dropout, training=self.training)
         
-        # 全局平均池化
+        # Global average pooling
         x = self.pool(x, batch)
 
-        # 同时输出三个预测值
+        # Output three predictions simultaneously
         original_acc = self.fc_original(x)
         quantized_acc = self.fc_quantized(x)
         qat_acc = self.fc_qat(x)

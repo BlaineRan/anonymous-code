@@ -5,8 +5,8 @@ from typing import Tuple
 
 def calculate_memory_usage(model: nn.Module, input_size: Tuple[int], device: torch.device = torch.device('cpu')) -> dict:
     """
-    通过直接查询张量属性来稳健地计算模型的激活内存和参数内存。
-    这个版本能够准确区分不同量化模式。
+    Robustly calculate model activation and parameter memory by directly querying tensor properties.
+    This version accurately distinguishes between different quantization modes.
     """
     model = model.to(device)
     model.eval()
@@ -17,11 +17,11 @@ def calculate_memory_usage(model: nn.Module, input_size: Tuple[int], device: tor
     hooks = []
     def forward_hook(module, input, output):
         nonlocal activation_memory
-        # 直接查询输出张量的元素大小，这是最准确的方法
+        # Directly query the element size of the output tensor, which is the most accurate method
         output_tensor = output[0] if isinstance(output, (tuple, list)) else output
         activation_memory += output_tensor.numel() * output_tensor.element_size()
 
-    # 只在叶子模块上挂钩子， 以避免重复计算
+    # Only hook on leaf modules to avoid double counting
     for layer in model.modules():
         if not list(layer.children()): 
             hooks.append(layer.register_forward_hook(forward_hook))
@@ -32,7 +32,7 @@ def calculate_memory_usage(model: nn.Module, input_size: Tuple[int], device: tor
     for hook in hooks:
         hook.remove()
 
-    # 同样使用 element_size() 来计算参数内存
+    # Also use element_size() to calculate parameter memory
     for param in model.parameters():
         parameter_memory += param.numel() * param.element_size()
 
@@ -47,7 +47,7 @@ def calculate_memory_usage(model: nn.Module, input_size: Tuple[int], device: tor
 
 # def calculate_memory_usage(model: nn.Module, input_size: Tuple[int], device: torch.device = torch.device('cpu')) -> dict:
 #     """
-#     通过直接查询张量属性来稳健地计算模型的激活内存和参数内存。
+#     Robustly calculate model activation and parameter memory by directly querying tensor properties.
 #     """
 #     model = model.to(device)
 #     model.eval()
@@ -58,11 +58,11 @@ def calculate_memory_usage(model: nn.Module, input_size: Tuple[int], device: tor
 #     hooks = []
 #     def forward_hook(module, input, output):
 #         nonlocal activation_memory
-#         # 统计输入张量的内存
+#         # Count memory of input tensors
 #         for inp in input:
 #             if isinstance(inp, torch.Tensor):
 #                 activation_memory += inp.numel() * inp.element_size()
-#         # 统计输出张量的内存
+#         # Count memory of output tensors
 #         if isinstance(output, torch.Tensor):
 #             activation_memory += output.numel() * output.element_size()
 #         elif isinstance(output, (tuple, list)):
@@ -70,7 +70,7 @@ def calculate_memory_usage(model: nn.Module, input_size: Tuple[int], device: tor
 #                 if isinstance(out, torch.Tensor):
 #                     activation_memory += out.numel() * out.element_size()
 
-#     # 只在叶子模块上挂钩子，以避免重复计算
+#     # Only hook on leaf modules to avoid double counting
 #     for layer in model.modules():
 #         if not list(layer.children()): 
 #             hooks.append(layer.register_forward_hook(forward_hook))
@@ -81,7 +81,7 @@ def calculate_memory_usage(model: nn.Module, input_size: Tuple[int], device: tor
 #     for hook in hooks:
 #         hook.remove()
 
-#     # 同样使用 element_size() 来计算参数内存
+#     # Also use element_size() to calculate parameter memory
 #     for param in model.parameters():
 #         parameter_memory += param.numel() * param.element_size()
 
